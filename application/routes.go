@@ -6,9 +6,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/ruvice/dotabackseaterbackend/handler"
+	"github.com/ruvice/dotabackseaterbackend/repository/order"
 )
 
-func loadRoutes() *chi.Mux {
+func (a *App) loadRoutes() {
 	router := chi.NewRouter()
 	router.Use(middleware.Logger)
 
@@ -17,17 +18,21 @@ func loadRoutes() *chi.Mux {
 	})
 
 	// Doing this ensures that everything loadOrderRoutes receives will have the order prefix
-	router.Route("/order", loadOrderRoutes)
+	router.Route("/order", a.loadOrderRoutes)
 
-	return router
+	a.router = router
 }
 
-func loadOrderRoutes(router chi.Router) {
-	orderHandler := &handler.Order{}
+func (a *App) loadOrderRoutes(router chi.Router) {
+	orderHandler := &handler.Order{
+		Repo: &order.RedisRepo{
+			Client: a.rdb,
+		},
+	}
 
 	router.Post("/", orderHandler.Create)
 	router.Get("/", orderHandler.List)
-	router.Get("/{id}", orderHandler.GetById)
-	router.Put("/{id}", orderHandler.UpdateById)
-	router.Delete("/{id}", orderHandler.DeleteById)
+	router.Get("/{id}", orderHandler.GetByID)
+	router.Put("/{id}", orderHandler.UpdateByID)
+	router.Delete("/{id}", orderHandler.DeleteByID)
 }

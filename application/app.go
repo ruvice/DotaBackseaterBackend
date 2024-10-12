@@ -17,9 +17,9 @@ type App struct {
 // Returns pointer to instance of App
 func New() *App {
 	app := &App{
-		router: loadRoutes(),
-		rdb:    redis.NewClient(&redis.Options{}),
+		rdb: redis.NewClient(&redis.Options{}),
 	}
+	app.loadRoutes()
 	return app
 }
 

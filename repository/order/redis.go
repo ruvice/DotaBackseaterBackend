@@ -69,7 +69,7 @@ func (r *RedisRepo) FindByID(ctx context.Context, id uint64) (model.Order, error
 	return order, nil
 }
 
-func (r *RedisRepo) DeleteById(ctx context.Context, id uint64) error {
+func (r *RedisRepo) DeleteByID(ctx context.Context, id uint64) error {
 	// Generating unique key
 	key := orderIDKey(id)
 
@@ -124,6 +124,7 @@ type FindResult struct {
 
 func (r *RedisRepo) FindAll(ctx context.Context, page FindAllPage) (FindResult, error) {
 	res := r.Client.SScan(ctx, "orders", page.Offset, "*", int64(page.Size))
+
 	keys, cursor, err := res.Result()
 	if err != nil {
 		return FindResult{}, fmt.Errorf("failed to get order ids: %w", err)
@@ -134,14 +135,14 @@ func (r *RedisRepo) FindAll(ctx context.Context, page FindAllPage) (FindResult, 
 			Orders: []model.Order{},
 		}, nil
 	}
-	xs, err := r.Client.MGet(ctx, keys...).Result()
 
+	xs, err := r.Client.MGet(ctx, keys...).Result()
 	if err != nil {
 		return FindResult{}, fmt.Errorf("failed to get orders: %w", err)
 	}
 
-	// Create an order slice the same length as result slice
 	orders := make([]model.Order, len(xs))
+
 	for i, x := range xs {
 		x := x.(string)
 		var order model.Order
@@ -158,5 +159,4 @@ func (r *RedisRepo) FindAll(ctx context.Context, page FindAllPage) (FindResult, 
 		Orders: orders,
 		Cursor: cursor,
 	}, nil
-
 }
