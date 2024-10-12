@@ -1,20 +1,17 @@
 package main
 
 import (
-	"net/http"
+	"context"
+	"fmt"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/ruvice/dotabackseaterbackend/application"
 )
 
 func main() {
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
+	app := application.New()
+	err := app.Start(context.TODO())
+	if err != nil {
+		fmt.Println("failed to start app", err)
+	}
 
-	r.Get("/hello", basicHandler)
-	http.ListenAndServe(":3000", r)
-}
-
-func basicHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Hello world2!"))
 }
