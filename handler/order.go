@@ -20,14 +20,13 @@ type Order struct {
 }
 
 func (h *Order) Create(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Creating order")
 	var body struct {
 		CustomerID uuid.UUID        `json:"customer_id"`
 		LineItems  []model.LineItem `json:"line_items"`
 	}
 
-	fmt.Println("body", r.Body)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		fmt.Println("body issue", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -40,15 +39,17 @@ func (h *Order) Create(w http.ResponseWriter, r *http.Request) {
 		LineItems:  body.LineItems,
 		CreatedAt:  &now,
 	}
+
 	err := h.Repo.Insert(r.Context(), order)
 	if err != nil {
 		fmt.Println("failed to insert:", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
 	res, err := json.Marshal(order)
 	if err != nil {
-		fmt.Println("failed to marshall:", err)
+		fmt.Println("failed to marshal:", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
