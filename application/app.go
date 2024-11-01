@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
 type App struct {
-	router http.Handler
-	rdb    *redis.Client
-	config Config
+	router        http.Handler
+	rdb           *redis.Client
+	config        Config
+	twitchWrapper *wrapper.TwitchWrapper
 }
 
 // Returns pointer to instance of App
@@ -21,13 +23,13 @@ func New(config Config) *App {
 		rdb: redis.NewClient(&redis.Options{
 			Addr: config.RedisAddress,
 		}),
-		config: config,
+		config:        config,
+		twitchWrapper: wrapper.NewTwitchWrapper(config.TwitchConfig),
 	}
 	app.loadRoutes()
 	return app
 }
 
-// (a* App) is similar to the this in javascript
 func (a *App) Start(ctx context.Context) error {
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", a.config.ServerPort),
