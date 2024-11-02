@@ -1,6 +1,7 @@
 package application
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -28,6 +29,10 @@ func (a *App) loadRoutes() {
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
+	})
+
+	router.Get("/hi", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "Hello world!")
 	})
 
 	// Doing this ensures that everything loadOrderRoutes receives will have the order prefix
@@ -59,15 +64,11 @@ func (a *App) loadVoteRoutes(router chi.Router) {
 		Repo: &vote.RedisRepo{
 			Client: a.rdb,
 		},
+		TwitchWrapper: a.twitchWrapper,
 	}
 
-	router.Post("/", voteHandler.Vote)
-	router.Get("/{channelID}", voteHandler.List)
-	router.Post("/v2", voteHandler.VoteV2)
-	router.Get("/v2/{channelID}", voteHandler.ListV2)
-
-	router.Post("/v3", voteHandler.VoteV3)
-	router.Get("/v3/{channelID}", voteHandler.ListV3)
+	router.Post("/", voteHandler.VoteV3)
+	router.Get("/getVotes/{channelID}", voteHandler.ListV3)
 }
 
 func (a *App) debugRoutes(router chi.Router) {

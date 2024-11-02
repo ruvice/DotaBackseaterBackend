@@ -45,104 +45,9 @@ func (r *RedisRepo) Insert(ctx context.Context, vote model.Vote) error {
 	return nil
 }
 
-// Adding pagination~
-type FindAllPage struct {
-	Size      uint64
-	Offset    uint64
-	ChannelID string
-}
-
 type FindResult struct {
 	Votes  []model.Vote
 	Cursor uint64
-}
-
-func (r *RedisRepo) FindAll(ctx context.Context, page FindAllPage) (FindResult, error) {
-	res := r.Client.SScan(ctx, page.ChannelID, page.Offset, "*", int64(page.Size))
-
-	keys, cursor, err := res.Result()
-	if err != nil {
-		return FindResult{}, fmt.Errorf("failed to get vote ids: %w", err)
-	}
-	fmt.Println("keys", keys)
-
-	if len(keys) == 0 {
-		return FindResult{
-			Votes: []model.Vote{},
-		}, nil
-	}
-
-	xs, err := r.Client.MGet(ctx, keys...).Result()
-	if err != nil {
-		return FindResult{}, fmt.Errorf("failed to get votes: %w", err)
-	}
-
-	votes := make([]model.Vote, len(xs))
-
-	for i, x := range xs {
-		x := x.(string)
-		var vote model.Vote
-
-		err := json.Unmarshal([]byte(x), &vote)
-		if err != nil {
-			return FindResult{}, fmt.Errorf("failed to decode order json: %w", err)
-		}
-
-		votes[i] = vote
-	}
-
-	return FindResult{
-		Votes:  votes,
-		Cursor: cursor,
-	}, nil
-}
-
-// Adds a vote for a specific item in a channel
-func (r *RedisRepo) AddVote(ctx context.Context, channelID string, itemID string) {
-	timestamp := float64(time.Now().Unix()) // Use Unix timestamp as score
-	// ZADD key (channel) with score (timestamp) and value (itemID)
-	r.Client.ZAdd(ctx, "votes:"+channelID, redis.Z{
-		Score:  timestamp,
-		Member: itemID,
-	})
-	fmt.Println("Vote added for", itemID, "in", channelID)
-}
-
-// Gets the most frequent item_id in the last X minutes
-func (r *RedisRepo) GetTopVote(ctx context.Context, channelID string, minutes int) string {
-	now := time.Now()
-	minTimestamp := float64(now.Add(-time.Duration(minutes) * time.Minute).Unix())
-	maxTimestamp := float64(now.Unix())
-
-	// Get all votes within the time range
-	items, err := r.Client.ZRangeByScoreWithScores(ctx, "votes:"+channelID, &redis.ZRangeBy{
-		Min: fmt.Sprintf("%f", minTimestamp),
-		Max: fmt.Sprintf("%f", maxTimestamp),
-	}).Result()
-
-	if err != nil {
-		fmt.Println("Error getting votes:", err)
-		return ""
-	}
-
-	// Count occurrences of each item_id
-	voteCounts := make(map[string]int)
-	for _, item := range items {
-		fmt.Println("item", item.Member)
-		voteCounts[item.Member.(string)]++
-	}
-
-	// Find the item_id with the highest count
-	var topItemID string
-	var maxVotes int
-	for itemID, count := range voteCounts {
-		if count > maxVotes {
-			maxVotes = count
-			topItemID = itemID
-		}
-	}
-
-	return topItemID
 }
 
 // Removes votes older than X minutes
@@ -154,7 +59,7 @@ func removeOldVotes(ctx context.Context, rdb *redis.Client, channelID string, mi
 }
 
 // Adds a vote with Twitch ID for an item in a channel using a hash
-func (r *RedisRepo) AddVoteV2(ctx context.Context, channelID string, itemID string, twitchID string) {
+func (r *RedisRepo) AddVote(ctx context.Context, channelID string, itemID string, twitchID string) {
 	// Increment vote count in a hash
 	r.Client.HIncrBy(ctx, "votes:"+channelID, itemID, 1)
 
@@ -165,12 +70,13 @@ func (r *RedisRepo) AddVoteV2(ctx context.Context, channelID string, itemID stri
 }
 
 // Gets the most frequent item_id
-func (r *RedisRepo) GetTopVoteV2(ctx context.Context, channelID string) string {
+func (r *RedisRepo) GetTopVote(ctx context.Context, channelID string) model.Item {
 	// Get all votes from the hash
 	votes, err := r.Client.HGetAll(ctx, "votes:"+channelID).Result()
+	var votedItem model.Item
 	if err != nil {
 		fmt.Println("Error getting votes:", err)
-		return ""
+		return model.Item{}
 	}
 
 	// Find the item_id with the highest vote count
@@ -185,5 +91,43 @@ func (r *RedisRepo) GetTopVoteV2(ctx context.Context, channelID string) string {
 			topItemID = itemIDStr
 		}
 	}
-	return topItemID
+	votedItem.ItemID = topItemID
+
+	return votedItem
+}
+
+func (r *RedisRepo) IncrementForChannel(ctx context.Context, channelID string) (int64, error) {
+	newCount, err := r.Client.Incr(ctx, channelID).Result()
+	if err != nil {
+		fmt.Println("Error incrementing votes for channel:", channelID, err)
+		return -1, err
+	}
+	fmt.Println("Incremented votes for channelID: ", newCount)
+	return newCount, nil
+}
+
+func (r *RedisRepo) ClearVoteCountForChannel(ctx context.Context, channelID string) {
+	_, err := r.Client.Del(ctx, channelID).Result()
+	if err != nil {
+		fmt.Printf("Failed to delete vote counts for channel %s: %v\n", channelID, err)
+		return
+	}
+}
+
+func (r *RedisRepo) ClearVotesForChannel(ctx context.Context, channelID string) error {
+	// Delete the entire hash for the given channelID
+	result, err := r.Client.Del(ctx, "votes:"+channelID).Result()
+	if err != nil {
+		fmt.Println("Error clearing votes:", err)
+		return err
+	}
+
+	// Check if any keys were actually deleted
+	if result == 0 {
+		fmt.Printf("No votes found for channel %s\n", channelID)
+	} else {
+		fmt.Printf("Votes cleared for channel %s\n", channelID)
+	}
+
+	return nil
 }

@@ -10,7 +10,8 @@ type Config struct {
 
 func LoadConfig() Config {
 	cfg := Config{
-		RedisAddress: "localhost:6379",
+		// RedisAddress: "localhost:6379",
+		RedisAddress: "redis:6379",
 		ServerPort:   3000,
 		TwitchConfig: LoadTwitchConfig(),
 	}

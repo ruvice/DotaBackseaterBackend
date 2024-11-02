@@ -1,0 +1,23 @@
+version: '3'
+services:
+  redis:
+    image: redis
+    container_name: dotabackseater-redis
+    ports:
+      - "6379:6379"  # Exposes Redis to the host machine (optional)
+    networks:
+      - dotabackseater-network
+
+  go-server:
+    image: dotabackseaterbackend
+    container_name: dotabackseaterbackend
+    ports:
+      - "3000:3000"  # Exposes the Go server to the host machine
+    networks:
+      - dotabackseater-network
+    depends_on:
+      - redis  # Ensures Redis starts before the Go server
+
+networks:
+  dotabackseater-network:
+    driver: bridge

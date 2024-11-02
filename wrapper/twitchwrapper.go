@@ -232,3 +232,58 @@ func (w *TwitchWrapper) SendFEMessage(channelID string, message string, ebs_toke
 
 	return nil
 }
+
+// Send message to Twitch API
+func (w *TwitchWrapper) sendMessage(twitchMessage TwitchMessage) error {
+	// Load configuration
+	// Generate JWT for authentication
+	jwtToken, err := w.generateJWT()
+	if err != nil {
+		return fmt.Errorf("failed to generate JWT: %v", err)
+	}
+
+	// Create message payload
+	payload := TwitchMessagePayload{
+		BroadcasterID:    twitchMessage.ChannelID,
+		Text:             twitchMessage.Message,
+		ExtensionID:      w.twitchConfig.ClientID,
+		ExtensionVersion: w.twitchConfig.ExtensionVersion,
+	}
+
+	// Convert payload to JSON
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %v", err)
+	}
+
+	// Make the HTTP request to the Twitch API
+	req, err := http.NewRequest("POST", "https://api.twitch.tv/helix/extensions/chat", bytes.NewBuffer(payloadJSON))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %v", err)
+	}
+
+	// Set headers
+	req.Header.Set("Client-ID", w.twitchConfig.ClientID)
+	req.Header.Set("Authorization", "Bearer "+jwtToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Log the response, including rate limits
+	fmt.Printf("Response status: %d\n", resp.StatusCode)
+	fmt.Printf("Rate Limit Remaining: %s/%s\n", resp.Header.Get("ratelimit-remaining"), resp.Header.Get("ratelimit-limit"))
+
+	// Check if the request failed
+	if resp.StatusCode != 204 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("error response from Twitch: %s", string(body))
+	}
+
+	return nil
+}
