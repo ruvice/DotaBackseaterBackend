@@ -97,12 +97,6 @@ func NewTwitchWrapper(twitchConfig TwitchConfig) *TwitchWrapper {
 		twitchConfig: twitchConfig,
 	}
 
-	// Sending a test message
-	testMessage := TwitchMessage{
-		Message:   "THIS IS A TEST MESSAGE, WRAPPER INIT SENT SWIMMINGLY",
-		ChannelID: "40825038",
-	}
-	twitchWrapper.SendMessage(testMessage)
 	return twitchWrapper
 }
 

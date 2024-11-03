@@ -3,3 +3,4 @@ DotaBackseaterBackend.code-workspace
 test.py
 twitch curls.txt
 application/twitchConfig.go
+application/mongoDBConfig.go

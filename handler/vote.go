@@ -19,6 +19,7 @@ const (
 
 type Vote struct {
 	Repo          *vote.RedisRepo
+	DB            *vote.MongoDBRepo
 	TwitchWrapper *wrapper.TwitchWrapper
 }
 
@@ -44,6 +45,7 @@ func (h *Vote) VoteV3(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.Repo.AddVote(r.Context(), body.ChannelID, itemIDString, body.TwitchID)
+	h.DB.UpdateVote(r.Context(), body.ChannelID, itemIDString)
 
 	// Enough votes accumulated
 	if voteCount > VoteThreshold {
@@ -82,13 +84,23 @@ func (h *Vote) handleThresholdFulfilled(ctx context.Context, channelID string) m
 	// Get the top votes
 	// Clear all votes
 	// Reset increment count
-	votedItem := h.getVotesForChannelId(ctx, channelID)
+	// votedItem := h.getVotesForChannelId(ctx, channelID)
 	h.Repo.ClearVotesForChannel(ctx, channelID)
 	h.Repo.ClearVoteCountForChannel(ctx, channelID)
+	votedItem := h.DB.GetTopVote(ctx, channelID)
+	h.DB.ResetVotes(ctx, channelID)
+	// fmt.Println("Getting top votes: ", votedItem, votedItem2)
 	return votedItem
 }
 
-func (h *Vote) getVotesForChannelId(ctx context.Context, channelID string) model.Item {
-	res := h.Repo.GetTopVote(ctx, channelID)
-	return res
+// func (h *Vote) getVotesForChannelId(ctx context.Context, channelID string) model.Item {
+// 	res := h.Repo.GetTopVote(ctx, channelID)
+// 	return res
+// }
+
+func (h *Vote) InsertMongo(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("In handler, pending insert")
+	// _ = h.DB.Insert(r.Context())
+
+	h.DB.FindDocument(r.Context(), "1324")
 }

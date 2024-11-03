@@ -10,9 +10,9 @@ import (
 )
 
 func main() {
-	app := application.New(application.LoadConfig())
 	// Only use context.Background in main!!!
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	app := application.New(ctx, application.LoadConfig())
 	// Basically says call cancel() at the end
 	defer cancel()
 	err := app.Start(ctx)

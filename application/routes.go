@@ -65,8 +65,16 @@ func (a *App) loadVoteRoutes(router chi.Router) {
 			Client: a.rdb,
 		},
 		TwitchWrapper: a.twitchWrapper,
+		DB: &vote.MongoDBRepo{
+			Client: a.mongoDB,
+		},
 	}
+	if a.mongoDB == nil {
+		fmt.Println("Lost reference")
+	}
+	fmt.Println("redisAvailability: ", a.redisAvailable)
 
+	router.Get("/", voteHandler.InsertMongo)
 	router.Post("/", voteHandler.VoteV3)
 	router.Get("/getVotes/{channelID}", voteHandler.ListV3)
 }
