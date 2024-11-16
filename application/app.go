@@ -2,11 +2,13 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/ruvice/dotabackseaterbackend/model"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -59,7 +61,6 @@ func (a *App) Start(ctx context.Context) error {
 		fmt.Println("Problem reading database names, ", err)
 	}
 	fmt.Println(databases)
-	a.checkMongoDBHealth(ctx)
 	a.checkRedisHealth(ctx)
 	defer func() {
 		if err := a.rdb.Close(); err != nil {
@@ -74,6 +75,7 @@ func (a *App) Start(ctx context.Context) error {
 	fmt.Println("Starting server...")
 	// Making a channel, basically a type that allows communication between goroutines
 	ch := make(chan error, 1)
+	a.performInitTasks(ctx)
 
 	// GoRoutine~
 	go func() {
@@ -107,10 +109,86 @@ func (a *App) checkRedisHealth(ctx context.Context) {
 	}
 }
 
-func (a *App) checkMongoDBHealth(ctx context.Context) {
-	if a.mongoDB == nil {
-		a.mongoAvailable = false
-	} else {
-		a.mongoAvailable = true
+func (a *App) performInitTasks(ctx context.Context) {
+	itemMap := a.getItemsFromMongo(ctx)
+	a.writeItemsToCache(ctx, itemMap)
+}
+
+func (a *App) getItemsFromMongo(ctx context.Context) model.ItemMap {
+	twitchExtensionDatabase := a.mongoDB.Database("itemDatabase")
+	channelCollection := twitchExtensionDatabase.Collection("itemsValid")
+
+	filter := bson.M{}
+	var result bson.M
+	err := channelCollection.FindOne(ctx, filter).Decode(&result)
+	if err != nil {
+		fmt.Println("Failed to find docucment: ", err)
+		return model.ItemMap{}
+	}
+
+	fmt.Println("Found document:", result)
+	itemMap := make(model.ItemMap)
+
+	// Iterate over the bson.M map and convert keys to integers
+	for key, value := range result {
+		// Skip the `_id` field
+		if key == "_id" {
+			continue
+		}
+		itemID := key
+		if err != nil {
+			fmt.Println("Invalid item_id key:", key)
+			return model.ItemMap{}
+		}
+		// Assert that the value is a nested object (bson.M)
+		itemData, ok := value.(bson.M)
+		if !ok {
+			fmt.Println("Invalid value type for key:", key)
+			return model.ItemMap{}
+		}
+
+		// Extract `name` and `cost` from the nested object// Extract `name`
+		name, _ := itemData["name"].(string)
+		itemName, _ := itemData["itemName"].(string)
+		// Extract `cost`, defaulting to 0 if not present or null
+		var itemCost int32
+		if costValue, ok := itemData["cost"]; ok && costValue != nil {
+			itemCost = costValue.(int32)
+		} else {
+			itemCost = 0 // Default to 0 if `cost` is absent or null
+		}
+		itemDetail := model.ItemDetail{
+			Name:     name,
+			ItemName: itemName,
+			Cost:     itemCost,
+		}
+
+		itemMap[itemID] = itemDetail
+	}
+	return itemMap
+}
+
+func (a *App) writeItemsToCache(ctx context.Context, itemMap model.ItemMap) {
+	for itemID, itemDetail := range itemMap {
+		data, err := json.Marshal(itemDetail)
+		if err != nil {
+			fmt.Println("Failed to encode ItemDetail:", err)
+		}
+		// Generating unique key
+		key := "itemID:" + itemID
+
+		// Using transaction to make changes atomic
+		txn := a.rdb.TxPipeline()
+
+		res := txn.Set(ctx, key, string(data), 0)
+		if err := res.Err(); err != nil {
+			txn.Discard()
+			fmt.Println("failed to add item: ", err)
+		}
+
+		if _, err := txn.Exec(ctx); err != nil {
+			fmt.Println("failed to exec:", err)
+		}
+		fmt.Println("success")
 	}
 }

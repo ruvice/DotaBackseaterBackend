@@ -8,8 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/ruvice/dotabackseaterbackend/handler"
-	"github.com/ruvice/dotabackseaterbackend/repository/order"
-	"github.com/ruvice/dotabackseaterbackend/repository/vote"
+	"github.com/ruvice/dotabackseaterbackend/repository"
 )
 
 func (a *App) loadRoutes() {
@@ -35,37 +34,22 @@ func (a *App) loadRoutes() {
 		fmt.Fprintf(w, "Hello world!")
 	})
 
-	// Doing this ensures that everything loadOrderRoutes receives will have the order prefix
-	router.Route("/order", a.loadOrderRoutes)
 	// Doing this ensures that everything loadVoteRoutes receives will have the vote prefix
 	router.Route("/vote", a.loadVoteRoutes)
 	// Doing this ensures that everything debugRoutes receives will have the debug prefix
 	router.Route("/debug", a.debugRoutes)
+	router.Route("/item", a.loadItemRoutes)
 
 	a.router = router
 }
 
-func (a *App) loadOrderRoutes(router chi.Router) {
-	orderHandler := &handler.Order{
-		Repo: &order.RedisRepo{
-			Client: a.rdb,
-		},
-	}
-
-	router.Post("/", orderHandler.Create)
-	router.Get("/", orderHandler.List)
-	router.Get("/{id}", orderHandler.GetByID)
-	router.Put("/{id}", orderHandler.UpdateByID)
-	router.Delete("/{id}", orderHandler.DeleteByID)
-}
-
 func (a *App) loadVoteRoutes(router chi.Router) {
 	voteHandler := &handler.Vote{
-		Repo: &vote.RedisRepo{
+		Repo: &repository.RedisRepo{
 			Client: a.rdb,
 		},
 		TwitchWrapper: a.twitchWrapper,
-		DB: &vote.MongoDBRepo{
+		DB: &repository.MongoDBRepo{
 			Client: a.mongoDB,
 		},
 	}
@@ -75,8 +59,21 @@ func (a *App) loadVoteRoutes(router chi.Router) {
 	fmt.Println("redisAvailability: ", a.redisAvailable)
 
 	router.Get("/", voteHandler.InsertMongo)
-	router.Post("/", voteHandler.VoteV3)
-	router.Get("/getVotes/{channelID}", voteHandler.ListV3)
+	router.Post("/", voteHandler.Vote)
+	router.Get("/{channelID}", voteHandler.ListV3)
+}
+
+func (a *App) loadItemRoutes(router chi.Router) {
+	itemHandler := &handler.ItemHandler{
+		Repo: &repository.RedisRepo{
+			Client: a.rdb,
+		},
+		DB: &repository.MongoDBRepo{
+			Client: a.mongoDB,
+		},
+	}
+	router.Get("/", itemHandler.GetItems)
+	router.Get("/refreshItems", itemHandler.RefreshItems)
 }
 
 func (a *App) debugRoutes(router chi.Router) {

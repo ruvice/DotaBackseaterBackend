@@ -1,0 +1,262 @@
+package repository
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+	"github.com/ruvice/dotabackseaterbackend/model"
+	"github.com/ruvice/dotabackseaterbackend/utils/errors"
+)
+
+type RedisRepo struct {
+	Client *redis.Client
+}
+
+func (r *RedisRepo) Insert(ctx context.Context, vote model.Vote) error {
+	data, err := json.Marshal(vote)
+	if err != nil {
+		return fmt.Errorf("failed to encode vote: %w", err)
+	}
+
+	// Generating unique key
+	key := vote.TwitchID
+	channelID := vote.ChannelID
+
+	// Using transaction to make changes atomic
+	txn := r.Client.TxPipeline()
+
+	res := txn.SetNX(ctx, key, string(data), 0)
+	if err := res.Err(); err != nil {
+		txn.Discard()
+		return fmt.Errorf("failed to add vote: %w", err)
+	}
+
+	if err := txn.SAdd(ctx, channelID, key).Err(); err != nil {
+		txn.Discard()
+		return fmt.Errorf("failed to add vote set: %w", err)
+	}
+
+	if _, err := txn.Exec(ctx); err != nil {
+		return fmt.Errorf("failed to exec: %w", err)
+	}
+
+	return nil
+}
+
+type FindResult struct {
+	Votes  []model.Vote
+	Cursor uint64
+}
+
+// Removes votes older than X minutes
+func removeOldVotes(ctx context.Context, rdb *redis.Client, channelID string, minutes int) {
+	minTimestamp := float64(time.Now().Add(-time.Duration(minutes) * time.Minute).Unix())
+	// Remove entries older than the specified timestamp
+	rdb.ZRemRangeByScore(ctx, "votes:"+channelID, "0", fmt.Sprintf("%f", minTimestamp))
+	fmt.Println("Old votes removed from", channelID)
+}
+
+// Adds a vote with Twitch ID for an item in a channel using a hash
+func (r *RedisRepo) AddVote(ctx context.Context, channelID string, itemID string, twitchID string) {
+	// Increment vote count in a hash
+	r.Client.HIncrBy(ctx, "votes:"+channelID, itemID, 1)
+
+	// Store the Twitch ID in a hash for reference (optional)
+	r.Client.HSet(ctx, "twitchIDs:"+channelID, itemID, twitchID)
+
+	fmt.Printf("Vote added for item %d by Twitch user %s in channel %s\n", itemID, twitchID, channelID)
+}
+
+func (r *RedisRepo) AddVoteRelation(ctx context.Context, channelID string, twitchID string) *errors.VoteError {
+	// Set the key with a 30-second expiration
+	key := channelID + ":" + twitchID
+	value := time.Now()
+	err := r.Client.Set(ctx, key, value, 30*time.Second).Err()
+	if err != nil {
+		fmt.Println("failed to write to Redis with expiry: %w", err)
+		voteError := errors.NewError(errors.CodeVoteRelationCreationError, "Unable to add Vote Relation")
+		return voteError
+	}
+
+	fmt.Printf("Successfully set key '%s' with value '%s' and 30-second expiry\n", key, value)
+	return nil
+}
+
+func (r *RedisRepo) GetVoteRelationTTL(ctx context.Context, channelID string, twitchID string) int64 {
+	// Retrieve the value for the given key
+	key := channelID + ":" + twitchID
+	ttl, err := r.Client.TTL(ctx, key).Result()
+	if err != nil {
+		fmt.Println("Unable to get TTL for vote relation: ", err)
+		return 0
+	}
+	// Check the TTL value
+	if ttl == -1 {
+		fmt.Printf("Key '%s' does not have an expiry set\n", key)
+		return -1
+	} else if ttl == -2 {
+		fmt.Printf("Key '%s' does not exist\n", key)
+		return -2
+	}
+
+	// Return the TTL in seconds
+	return int64(ttl.Seconds())
+}
+
+// Gets the most frequent item_id
+func (r *RedisRepo) GetTopVote(ctx context.Context, channelID string) string {
+	// Get all votes from the hash
+	votes, err := r.Client.HGetAll(ctx, "votes:"+channelID).Result()
+	if err != nil {
+		fmt.Println("Error getting votes:", err)
+		return ""
+	}
+
+	// Find the item_id with the highest vote count
+	var topItemID string
+	var maxVotes int64
+
+	fmt.Println(votes)
+	for itemIDStr, _ := range votes {
+		count := r.Client.HIncrBy(ctx, "votes:"+channelID, itemIDStr, 0)
+		if count.Val() > maxVotes {
+			maxVotes = count.Val()
+			topItemID = itemIDStr
+		}
+	}
+
+	return topItemID
+}
+
+func (r *RedisRepo) IncrementForChannel(ctx context.Context, channelID string) (int64, error) {
+	newCount, err := r.Client.Incr(ctx, channelID).Result()
+	if err != nil {
+		fmt.Println("Error incrementing votes for channel:", channelID, err)
+		return -1, err
+	}
+	fmt.Println("Incremented votes for channelID: ", newCount)
+	return newCount, nil
+}
+
+func (r *RedisRepo) ClearVoteCountForChannel(ctx context.Context, channelID string) {
+	_, err := r.Client.Del(ctx, channelID).Result()
+	if err != nil {
+		fmt.Printf("Failed to delete vote counts for channel %s: %v\n", channelID, err)
+		return
+	}
+}
+
+func (r *RedisRepo) ClearVotesForChannel(ctx context.Context, channelID string) error {
+	// Delete the entire hash for the given channelID
+	result, err := r.Client.Del(ctx, "votes:"+channelID).Result()
+	if err != nil {
+		fmt.Println("Error clearing votes:", err)
+		return err
+	}
+
+	// Check if any keys were actually deleted
+	if result == 0 {
+		fmt.Printf("No votes found for channel %s\n", channelID)
+	} else {
+		fmt.Printf("Votes cleared for channel %s\n", channelID)
+	}
+
+	return nil
+}
+
+// Handling items
+
+func (r *RedisRepo) CacheItems(ctx context.Context, itemMap model.ItemMap) {
+	fmt.Println("Updating Redis Cache with items")
+	err := r.clearPreviousItemCache(ctx)
+	if err != nil {
+		fmt.Println("Failed to clear previous item cache")
+	}
+	for itemID, itemDetail := range itemMap {
+		data, err := json.Marshal(itemDetail)
+		if err != nil {
+			fmt.Println("Failed to encode ItemDetail:", err)
+		}
+		// Generating unique key
+		key := "itemID:" + itemID
+
+		// Using transaction to make changes atomic
+		txn := r.Client.TxPipeline()
+
+		res := txn.Set(ctx, key, string(data), 0)
+		if err := res.Err(); err != nil {
+			txn.Discard()
+			fmt.Println("failed to add item: ", err)
+		}
+
+		if _, err := txn.Exec(ctx); err != nil {
+			fmt.Println("failed to exec:", err)
+		}
+	}
+
+	return
+}
+
+func (r *RedisRepo) clearPreviousItemCache(ctx context.Context) error {
+	var cursor uint64
+	var keysToDelete []string
+	prefix := "itemID:"
+
+	// Use SCAN to find keys with the specified prefix
+	for {
+		keys, newCursor, err := r.Client.Scan(ctx, cursor, prefix+"*", 100).Result()
+		if err != nil {
+			return fmt.Errorf("error scanning keys: %w", err)
+		}
+
+		// Collect the keys to delete
+		keysToDelete = append(keysToDelete, keys...)
+		cursor = newCursor
+
+		// If cursor is 0, the scan is complete
+		if cursor == 0 {
+			break
+		}
+	}
+
+	// If there are keys to delete, use DEL command
+	if len(keysToDelete) > 0 {
+		if err := r.Client.Del(ctx, keysToDelete...).Err(); err != nil {
+			return fmt.Errorf("error deleting keys: %w", err)
+		}
+		fmt.Printf("Deleted %d keys with prefix '%s'\n", len(keysToDelete), prefix)
+	} else {
+		fmt.Println("No keys found with the specified prefix")
+	}
+
+	return nil
+}
+
+func (r *RedisRepo) GetItemByID(ctx context.Context, itemID string) model.Item {
+	// Retrieve the value for the given key
+
+	data, err := r.Client.Get(ctx, "itemID:"+itemID).Result()
+	if err == redis.Nil {
+		fmt.Println("Error retrieving itemID from redis: ", err)
+		return model.Item{}
+	} else if err != nil {
+		fmt.Println("Error retrieving itemID from redis: ", err)
+		return model.Item{}
+	}
+
+	var itemDetail model.ItemDetail
+	// Deserialize the JSON string back to the struct
+	if err := json.Unmarshal([]byte(data), &itemDetail); err != nil {
+		fmt.Println("Failed to unmarshal itemDetail JSON: %w", err)
+	}
+
+	item := model.Item{
+		ItemID:     itemID,
+		ItemDetail: itemDetail,
+	}
+
+	return item
+}
