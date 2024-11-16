@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -169,6 +170,49 @@ func (r *RedisRepo) ClearVotesForChannel(ctx context.Context, channelID string) 
 
 // Handling items
 
+func (r *RedisRepo) writeItemMapToCache(ctx context.Context, itemMap model.ItemMap) {
+	// Step 1: Convert itemMap to a slice of Items
+	// Sort the 'Items' array by the 'Name' field
+	var items []model.Item
+	for _, item := range itemMap {
+		items = append(items, item)
+	}
+
+	// Step 2: Sort the items slice by the Name field in ItemDetail
+	sort.Slice(items, func(i, j int) bool {
+		// Handle empty or null Name values by treating them as empty strings
+		return items[i].Name < items[j].Name
+	})
+
+	// Step 3: Marshal the sorted items slice to JSON
+	jsonData, err := json.Marshal(items)
+	if err != nil {
+		fmt.Println("Failed to marshal ItemMap: ", err)
+		return
+	}
+
+	// Write the JSON string to Redis
+	if err := r.Client.Set(ctx, "itemMapCache", jsonData, 0).Err(); err != nil {
+		fmt.Println("failed to write to Redis: ", err)
+		return
+	}
+
+	fmt.Println("ItemMap successfully saved to Redis")
+	return
+}
+
+func (r *RedisRepo) GetItemMapFromCache(ctx context.Context) (string, *errors.VoteError) {
+	// Get the JSON string from Redis
+	jsonData, err := r.Client.Get(ctx, "itemMapCache").Result()
+	if err != nil {
+		fmt.Println("Error getting itemMapCache: ", err)
+		voteError := errors.NewError(errors.CodeItemGetRedisError, "Failed to get Item Map for client from Redis")
+		return "", voteError
+	}
+
+	return jsonData, nil
+}
+
 func (r *RedisRepo) CacheItems(ctx context.Context, itemMap model.ItemMap) {
 	fmt.Println("Updating Redis Cache with items")
 	err := r.clearPreviousItemCache(ctx)
@@ -247,15 +291,10 @@ func (r *RedisRepo) GetItemByID(ctx context.Context, itemID string) model.Item {
 		return model.Item{}
 	}
 
-	var itemDetail model.ItemDetail
+	var item model.Item
 	// Deserialize the JSON string back to the struct
-	if err := json.Unmarshal([]byte(data), &itemDetail); err != nil {
+	if err := json.Unmarshal([]byte(data), &item); err != nil {
 		fmt.Println("Failed to unmarshal itemDetail JSON: %w", err)
-	}
-
-	item := model.Item{
-		ItemID:     itemID,
-		ItemDetail: itemDetail,
 	}
 
 	return item

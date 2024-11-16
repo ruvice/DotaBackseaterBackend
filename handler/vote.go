@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ruvice/dotabackseaterbackend/model"
@@ -27,7 +26,7 @@ type Vote struct {
 var VoteBody struct {
 	ChannelID string `json:"channel_id,omitempty"`
 	TwitchID  string `json:"twitch_id,omitempty"`
-	ItemID    int64  `json:"item_id,omitempty"`
+	ItemID    string `json:"item_id,omitempty"`
 }
 
 func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
@@ -55,16 +54,15 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	itemIDString := strconv.FormatInt(VoteBody.ItemID, 10) // Base 10 for decimal
 	voteCount, incrementErr := h.Repo.IncrementForChannel(r.Context(), VoteBody.ChannelID)
 	if incrementErr != nil {
 		fmt.Println("Failed to increment count in Redis: ", incrementErr)
 		// w.WriteHeader(http.StatusInternalServerError)
 		// return
 	}
-	h.Repo.AddVote(r.Context(), VoteBody.ChannelID, itemIDString, VoteBody.TwitchID)
+	h.Repo.AddVote(r.Context(), VoteBody.ChannelID, VoteBody.ItemID, VoteBody.TwitchID)
 
-	updateErr := h.DB.UpdateVote(r.Context(), VoteBody.ChannelID, itemIDString)
+	updateErr := h.DB.UpdateVote(r.Context(), VoteBody.ChannelID, VoteBody.ItemID)
 	if updateErr != nil {
 		fmt.Println(updateErr)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -74,7 +72,7 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 	// Enough votes accumulated
 	if voteCount > VoteThreshold {
 		votedItem := h.handleThresholdFulfilled(r.Context(), VoteBody.ChannelID)
-		message := fmt.Sprintf("Chat thinks you should buy %s!", votedItem.ItemDetail.Name)
+		message := fmt.Sprintf("Chat thinks you should buy %s!", votedItem.Name)
 
 		var twitchMessage = wrapper.TwitchMessage{
 			Message:   message,

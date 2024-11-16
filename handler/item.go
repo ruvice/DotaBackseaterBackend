@@ -14,8 +14,18 @@ type ItemHandler struct {
 
 func (h *ItemHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Get Items")
-	h.DB.GetItems(r.Context())
+	itemJsonString, err := h.Repo.GetItemMapFromCache(r.Context())
+	if err != nil {
+		fmt.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	// Set response headers
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+
+	// Write the JSON string directly to the HTTP response
+	w.Write([]byte(itemJsonString))
 }
 
 func (h *ItemHandler) RefreshItems(w http.ResponseWriter, r *http.Request) {

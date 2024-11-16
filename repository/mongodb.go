@@ -181,7 +181,7 @@ func (r *MongoDBRepo) RefreshItems(ctx context.Context) (model.ItemMap, *errors.
 		if key == "_id" {
 			continue
 		}
-		itemID := key
+		itemKey := key
 		if err != nil {
 			fmt.Println("Invalid item_id key:", key)
 			voteError := errors.NewError(errors.CodeItemRefreshError, "Error Refreshing Items")
@@ -198,6 +198,7 @@ func (r *MongoDBRepo) RefreshItems(ctx context.Context) (model.ItemMap, *errors.
 		// Extract `name` and `cost` from the nested object// Extract `name`
 		name, _ := itemData["name"].(string)
 		itemName, _ := itemData["itemName"].(string)
+		itemID, _ := itemData["id"].(string)
 		// Extract `cost`, defaulting to 0 if not present or null
 		var itemCost int32
 		if costValue, ok := itemData["cost"]; ok && costValue != nil {
@@ -205,13 +206,14 @@ func (r *MongoDBRepo) RefreshItems(ctx context.Context) (model.ItemMap, *errors.
 		} else {
 			itemCost = 0 // Default to 0 if `cost` is absent or null
 		}
-		itemDetail := model.ItemDetail{
+		item := model.Item{
 			Name:     name,
 			ItemName: itemName,
 			Cost:     itemCost,
+			ID:       itemID,
 		}
 
-		itemMap[itemID] = itemDetail
+		itemMap[itemKey] = item
 	}
 	return itemMap, nil
 }
