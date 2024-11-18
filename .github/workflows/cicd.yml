@@ -40,7 +40,6 @@ jobs:
       - name: Check File Size and Network Status
         run: |
           ls -lh dotabackseaterbackend.tar
-          ping -c 4 ${{ secrets.EC2_HOST }}
       
       - name: Transfer Docker Image and Files to EC2
         run: |
