@@ -32,12 +32,21 @@ jobs:
 
       - name: Save Docker Image as tar
         run: docker save dotabackseaterbackend -o dotabackseaterbackend.tar
+
+      - name: Check Disk Space on EC2
+        run: |
+          ssh -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} "df -h"
+
+      - name: Check File Size and Network Status
+        run: |
+          ls -lh dotabackseaterbackend.tar
+          ping -c 4 ${{ secrets.EC2_HOST }}
       
       - name: Transfer Docker Image and Files to EC2
         run: |
-          scp -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no dotabackseaterbackend.tar ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/dotabackseaterbackend.tar
-          scp -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/docker-compose.yml
-          scp -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no .env ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/.env
+          scp -v -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no dotabackseaterbackend.tar ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/dotabackseaterbackend.tar
+          scp -v -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/docker-compose.yml
+          scp -v -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no .env ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/.env
 
   deploy:
     needs: build
