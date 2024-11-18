@@ -29,18 +29,16 @@ jobs:
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
       - name: Build docker image
         run: docker build -t dotabackseaterbackend .
-      - name: Transfer Docker Compose File and Built Image to EC2
-        run: |
-          scp -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/docker-compose.yml
-          ssh -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
-          docker save dotabackseaterbackend -o /home/ubuntu/dotabackseaterbackend.tar
-          EOF
 
-      - name: Transfer Built Image to EC2
-        run: scp -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no dotabackseaterbackend.tar ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/dotabackseaterbackend.tar
-
-
+      - name: Save Docker Image as tar
+        run: docker save dotabackseaterbackend -o dotabackseaterbackend.tar
       
+      - name: Transfer Docker Image and Files to EC2
+        run: |
+          scp -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no dotabackseaterbackend.tar ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/dotabackseaterbackend.tar
+          scp -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/docker-compose.yml
+          scp -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no .env ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/.env
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
