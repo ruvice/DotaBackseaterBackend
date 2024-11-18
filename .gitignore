@@ -5,3 +5,4 @@ twitch curls.txt
 application/twitchConfig.go
 application/mongoDBConfig.go
 imageScript
+.env

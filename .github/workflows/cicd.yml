@@ -1,0 +1,62 @@
+name: Deploy Go Application
+
+on:
+  push:
+    branches:
+      - deploy-to-ec2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+      - name: Create .env file
+        run: |
+          echo "TWITCH_EXTENSION_SECRET=${{ secrets.TWITCH_EXTENSION_SECRET }}" >> .env
+          echo "TWITCH_OWNER=${{ secrets.TWITCH_OWNER }}" >> .env
+          echo "TWITCH_CLIENT_ID=${{ secrets.TWITCH_CLIENT_ID }}" >> .env
+          echo "TWITCH_CLIENT_SECRET=${{ secrets.TWITCH_CLIENT_SECRET }}" >> .env
+          echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> .env
+          echo "REDIS_ADDR=${{ secrets.REDIS_ADDR }}" >> .env
+          echo "SERVER_PORT=${{ secrets.SERVER_PORT }}" >> .env
+
+      - name: Set up SSH with .pem file
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AWS_PEM_KEY }}" > ~/.ssh/aws-keypair.pem
+          chmod 400 ~/.ssh/aws-keypair.pem
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+      - name: Build docker image
+        run: docker build -t dotabackseaterbackend .
+      - name: Transfer Docker Compose File and Built Image to EC2
+        run: |
+          scp -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/docker-compose.yml
+          ssh -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+          docker save dotabackseaterbackend -o /home/ubuntu/dotabackseaterbackend.tar
+          EOF
+
+      - name: Transfer Built Image to EC2
+        run: scp -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no dotabackseaterbackend.tar ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/dotabackseaterbackend.tar
+
+
+      
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH with .pem file
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AWS_PEM_KEY }}" > ~/.ssh/aws-keypair.pem
+          chmod 400 ~/.ssh/aws-keypair.pem
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Application Using Docker Compose
+        run: |
+          ssh -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+          cd /home/ubuntu
+          docker load -i dotabackseaterbackend.tar
+          docker compose down || true
+          docker compose up -d
+          EOF
