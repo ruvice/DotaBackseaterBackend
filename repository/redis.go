@@ -75,7 +75,7 @@ func (r *RedisRepo) AddVoteRelation(ctx context.Context, channelID string, twitc
 	// Set the key with a 30-second expiration
 	key := channelID + ":" + twitchID
 	value := time.Now()
-	err := r.Client.Set(ctx, key, value, 30*time.Second).Err()
+	err := r.Client.Set(ctx, key, value, 45*time.Second).Err()
 	if err != nil {
 		fmt.Println("failed to write to Redis with expiry: %w", err)
 		voteError := errors.NewError(errors.CodeVoteRelationCreationError, "Unable to add Vote Relation")
