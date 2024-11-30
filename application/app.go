@@ -78,7 +78,7 @@ func (a *App) Start(ctx context.Context) error {
 		}
 	}()
 
-	fmt.Println("Starting server on ", a.config.ServerPort)
+	fmt.Printf("Starting server on: %d", a.config.ServerPort)
 	// Making a channel, basically a type that allows communication between goroutines
 	ch := make(chan error, 1)
 	a.performInitTasks(ctx)
