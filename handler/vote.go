@@ -45,8 +45,10 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 			fmt.Println(voteError)
 		}
 	} else {
+		w.Header().Set("Access-Control-Expose-Headers", "Retry-After") // Expose Retry-After header
 		// Set the `Retry-After` header to indicate the backoff period in seconds
 		w.Header().Set("Retry-After", fmt.Sprintf("%d", int(ttl)))
+
 		w.WriteHeader(http.StatusTooManyRequests)
 		// Optionally, include a message in the response body
 		response := fmt.Sprintf("Please retry after %d seconds", int(ttl))

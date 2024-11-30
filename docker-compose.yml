@@ -12,7 +12,7 @@ services:
     image: dotabackseaterbackend
     container_name: dotabackseaterbackend
     ports:
-      - "3000:3000"  # Exposes the Go server to the host machine
+      - "443:443"  # Exposes the Go server to the host machine
     networks:
       - dotabackseater-network
     depends_on:

@@ -3,5 +3,5 @@ RUN mkdir /app
 ADD . /app
 WORKDIR /app
 RUN go build -o main .
-EXPOSE 3000
+EXPOSE 443
 CMD ["/app/main"]

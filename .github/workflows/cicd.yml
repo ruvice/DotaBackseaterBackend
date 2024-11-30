@@ -20,6 +20,8 @@ jobs:
           echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> .env
           echo "REDIS_ADDR=${{ secrets.REDIS_ADDR }}" >> .env
           echo "SERVER_PORT=${{ secrets.SERVER_PORT }}" >> .env
+          echo "SSL_CERT_PATH=${{ secrets.SSL_CERT_PATH }}" >> .env
+          echo "SSL_KEY_PATH=${{ secrets.SSL_KEY_PATH }}" >> .env
 
       - name: Set up SSH with .pem file
         run: |
