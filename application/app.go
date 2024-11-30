@@ -90,10 +90,11 @@ func (a *App) Start(ctx context.Context) error {
 			"/certs/privkey.pem",
 		)
 		// Error wrapping pog!
-		// if err != nil {
-		// 	ch <- fmt.Errorf("failed to start server:  %w", err)
-		// }
-		close(ch)
+		if err != nil {
+			fmt.Println("failed to start server:", err)
+			// ch <- fmt.Errorf("failed to start server:  %w", err)
+		}
+		// close(ch)
 	}()
 
 	select {
