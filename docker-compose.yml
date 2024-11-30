@@ -15,6 +15,8 @@ services:
       - "443:443"  # Exposes the Go server to the host machine
     networks:
       - dotabackseater-network
+    volumes:
+      - /etc/letsencrypt/live/dotabackseater.ruvice.com:/certs:ro
     depends_on:
       - redis  # Ensures Redis starts before the Go server
 
