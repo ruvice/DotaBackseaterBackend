@@ -68,4 +68,5 @@ jobs:
           docker load -i dotabackseaterbackend.tar
           docker-compose down || true
           docker-compose up -d
+          docker image prune
           EOF
