@@ -49,16 +49,12 @@ func (a *App) loadVoteRoutes(router chi.Router) {
 			Client: a.rdb,
 		},
 		TwitchWrapper: a.twitchWrapper,
-		DB: &repository.MongoDBRepo{
-			Client: a.mongoDB,
-		},
 	}
 	if a.mongoDB == nil {
 		fmt.Println("Lost reference")
 	}
 	fmt.Println("redisAvailability: ", a.redisAvailable)
 
-	router.Get("/", voteHandler.InsertMongo)
 	router.Post("/", voteHandler.Vote)
 	router.Get("/{channelID}", voteHandler.ListV3)
 }
@@ -81,5 +77,5 @@ func (a *App) debugRoutes(router chi.Router) {
 		TwitchWrapper: a.twitchWrapper,
 	}
 	router.Post("/message", twitchHandler.SendTwitchMessage)
-	router.Post("/messagev2", twitchHandler.SendTwitchFEMessage)
+	router.Post("/messagefrontend", twitchHandler.SendTwitchFEMessage)
 }

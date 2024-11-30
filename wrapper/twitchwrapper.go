@@ -2,23 +2,19 @@ package wrapper
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 	"golang.org/x/oauth2/twitch"
 )
 
 type TwitchWrapper struct {
-	token        *oauth2.Token
 	twitchConfig TwitchConfig
 }
 
@@ -56,44 +52,8 @@ func NewTwitchWrapper(twitchConfig TwitchConfig) *TwitchWrapper {
 		TokenURL:     twitch.Endpoint.TokenURL,
 		Scopes:       twitchConfig.Scopes,
 	}
-	fmt.Println("Getting access token")
-
-	token, err := oauth2Config.Token(context.Background())
-	if err != nil {
-		fmt.Println("Access token: ", err)
-		log.Fatal(err)
-	}
-
-	fmt.Printf("Access token: %s\n", token.AccessToken)
-
-	// Trying to send a message
-	expirationTime := time.Now().Add(5 * time.Second).Unix()
-	claims := jwt.MapClaims{
-		"exp":          expirationTime,
-		"user_id":      "40825038",
-		"role":         "external",
-		"channel_id":   "40825038",
-		"pubsub_perms": map[string][]string{"send": {"broadcast"}},
-	}
-
-	// Create the JWT with the claims and sign it
-	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	// Sign the token with the secret key
-	decodedSecret, err := base64.StdEncoding.DecodeString(twitchConfig.ExtensionSecret)
-	if err != nil {
-		log.Fatalf("Error decoding base64 secret: %v", err)
-	}
-	jwtTokenString, err := jwtToken.SignedString([]byte(decodedSecret))
-	if err != nil {
-		log.Fatalf("Error signing token: %v", err)
-	}
-
-	// Print the signed token
-	fmt.Println("Signed JWT:", jwtTokenString)
 
 	twitchWrapper := &TwitchWrapper{
-		token:        token,
 		twitchConfig: twitchConfig,
 	}
 
@@ -228,7 +188,7 @@ func (w *TwitchWrapper) SendFEMessage(channelID string, message string, ebs_toke
 }
 
 // Send message to Twitch API
-func (w *TwitchWrapper) sendMessage(twitchMessage TwitchMessage) error {
+func (w *TwitchWrapper) SendMessageNew(twitchMessage TwitchMessage) error {
 	// Load configuration
 	// Generate JWT for authentication
 	jwtToken, err := w.generateJWT()

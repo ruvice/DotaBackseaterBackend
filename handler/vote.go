@@ -9,7 +9,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ruvice/dotabackseaterbackend/model"
 	"github.com/ruvice/dotabackseaterbackend/repository"
-	"github.com/ruvice/dotabackseaterbackend/utils/errors"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
@@ -19,7 +18,6 @@ const (
 
 type Vote struct {
 	Repo          *repository.RedisRepo
-	DB            *repository.MongoDBRepo
 	TwitchWrapper *wrapper.TwitchWrapper
 }
 
@@ -62,13 +60,6 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Repo.AddVote(r.Context(), VoteBody.ChannelID, VoteBody.ItemID, VoteBody.TwitchID)
 
-	updateErr := h.DB.UpdateVote(r.Context(), VoteBody.ChannelID, VoteBody.ItemID)
-	if updateErr != nil {
-		fmt.Println(updateErr)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
 	// Enough votes accumulated
 	if voteCount > VoteThreshold {
 		votedItem := h.handleThresholdFulfilled(r.Context(), VoteBody.ChannelID)
@@ -86,7 +77,7 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 
 func (h *Vote) ListV3(w http.ResponseWriter, r *http.Request) {
 	channelIDParam := chi.URLParam(r, "channelID")
-	res := h.Repo.GetTopVote(r.Context(), channelIDParam)
+	res := h.Repo.GetMostVoted(r.Context(), channelIDParam)
 	var response struct {
 		ItemID string
 	}
@@ -104,21 +95,9 @@ func (h *Vote) ListV3(w http.ResponseWriter, r *http.Request) {
 
 func (h *Vote) handleThresholdFulfilled(ctx context.Context, channelID string) model.Item {
 	// Get the top votes, clear all votes, reset increment count
-	votedItemID, voteError := h.DB.GetTopVote(ctx, channelID)
-	if voteError != nil {
-		if voteError.Code == errors.CodeVotedItemNotFound {
-			votedItemID = h.Repo.GetTopVote(ctx, channelID)
-		}
-	}
+	votedItemID := h.Repo.GetMostVoted(ctx, channelID)
 	votedItem := h.Repo.GetItemByID(ctx, votedItemID)
 	h.Repo.ClearVotesForChannel(ctx, channelID)
 	h.Repo.ClearVoteCountForChannel(ctx, channelID)
-	h.DB.ResetVotes(ctx, channelID)
 	return votedItem
-}
-
-func (h *Vote) InsertMongo(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("In handler, pending insert")
-
-	h.DB.FindDocument(r.Context(), "1324")
 }

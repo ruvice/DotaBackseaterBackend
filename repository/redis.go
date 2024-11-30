@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -15,6 +16,11 @@ import (
 type RedisRepo struct {
 	Client *redis.Client
 }
+
+const (
+	VoteTTL         = 3600
+	VoteRelationTTL = 0
+)
 
 func (r *RedisRepo) Insert(ctx context.Context, vote model.Vote) error {
 	data, err := json.Marshal(vote)
@@ -52,21 +58,12 @@ type FindResult struct {
 	Cursor uint64
 }
 
-// Removes votes older than X minutes
-func removeOldVotes(ctx context.Context, rdb *redis.Client, channelID string, minutes int) {
-	minTimestamp := float64(time.Now().Add(-time.Duration(minutes) * time.Minute).Unix())
-	// Remove entries older than the specified timestamp
-	rdb.ZRemRangeByScore(ctx, "votes:"+channelID, "0", fmt.Sprintf("%f", minTimestamp))
-	fmt.Println("Old votes removed from", channelID)
-}
-
 // Adds a vote with Twitch ID for an item in a channel using a hash
 func (r *RedisRepo) AddVote(ctx context.Context, channelID string, itemID string, twitchID string) {
 	// Increment vote count in a hash
-	r.Client.HIncrBy(ctx, "votes:"+channelID, itemID, 1)
-
-	// Store the Twitch ID in a hash for reference (optional)
-	r.Client.HSet(ctx, "twitchIDs:"+channelID, itemID, twitchID)
+	key := "votes:" + channelID
+	r.Client.HIncrBy(ctx, key, itemID, 1)
+	r.Client.Expire(ctx, key, VoteTTL*time.Second)
 
 	fmt.Printf("Vote added for item %d by Twitch user %s in channel %s\n", itemID, twitchID, channelID)
 }
@@ -75,7 +72,7 @@ func (r *RedisRepo) AddVoteRelation(ctx context.Context, channelID string, twitc
 	// Set the key with a 30-second expiration
 	key := channelID + ":" + twitchID
 	value := time.Now()
-	err := r.Client.Set(ctx, key, value, 45*time.Second).Err()
+	err := r.Client.Set(ctx, key, value, VoteRelationTTL*time.Second).Err()
 	if err != nil {
 		fmt.Println("failed to write to Redis with expiry: %w", err)
 		voteError := errors.NewError(errors.CodeVoteRelationCreationError, "Unable to add Vote Relation")
@@ -108,7 +105,7 @@ func (r *RedisRepo) GetVoteRelationTTL(ctx context.Context, channelID string, tw
 }
 
 // Gets the most frequent item_id
-func (r *RedisRepo) GetTopVote(ctx context.Context, channelID string) string {
+func (r *RedisRepo) GetMostVoted(ctx context.Context, channelID string) string {
 	// Get all votes from the hash
 	votes, err := r.Client.HGetAll(ctx, "votes:"+channelID).Result()
 	if err != nil {
@@ -121,14 +118,17 @@ func (r *RedisRepo) GetTopVote(ctx context.Context, channelID string) string {
 	var maxVotes int64
 
 	fmt.Println(votes)
-	for itemIDStr, _ := range votes {
-		count := r.Client.HIncrBy(ctx, "votes:"+channelID, itemIDStr, 0)
-		if count.Val() > maxVotes {
-			maxVotes = count.Val()
-			topItemID = itemIDStr
+	for item, countStr := range votes {
+		count, err := strconv.ParseInt(countStr, 10, 64)
+		if err != nil {
+			fmt.Printf("Skipping invalid vote count for item %s: %v\n", item, err)
+			continue
+		}
+		if count > maxVotes {
+			maxVotes = count
+			topItemID = item
 		}
 	}
-
 	return topItemID
 }
 
@@ -139,6 +139,8 @@ func (r *RedisRepo) IncrementForChannel(ctx context.Context, channelID string) (
 		return -1, err
 	}
 	fmt.Println("Incremented votes for channelID: ", newCount)
+
+	r.Client.Expire(ctx, channelID, VoteTTL*time.Second)
 	return newCount, nil
 }
 
