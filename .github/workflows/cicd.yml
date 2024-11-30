@@ -26,7 +26,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.AWS_PEM_KEY }}" > ~/.ssh/aws-keypair.pem
           chmod 400 ~/.ssh/aws-keypair.pem
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
       - name: Build docker image
         run: docker build -t dotabackseaterbackend .
 
