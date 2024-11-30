@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"time"
 
@@ -85,9 +86,11 @@ func (a *App) Start(ctx context.Context) error {
 	// GoRoutine~
 	go func() {
 		// err = server.ListenAndServe()
+		certPath := os.Getenv("SSL_CERT_PATH")
+		keyPath := os.Getenv("SSL_KEY_PATH")
 		err = server.ListenAndServeTLS(
-			"/certs/fullchain.pem",
-			"/certs/privkey.pem",
+			certPath,
+			keyPath,
 		)
 		// Error wrapping pog!
 		if err != nil {

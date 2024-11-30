@@ -16,7 +16,7 @@ services:
     networks:
       - dotabackseater-network
     volumes:
-      - /etc/letsencrypt/live/dotabackseater.ruvice.com:/certs:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - redis  # Ensures Redis starts before the Go server
 
