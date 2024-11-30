@@ -27,7 +27,7 @@ func (a *App) loadRoutes() {
 	router.Use(cors.Handler(corsOptions))
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "Yay me!")
 	})
 
 	router.Get("/hi", func(w http.ResponseWriter, r *http.Request) {
