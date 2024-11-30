@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -50,6 +51,9 @@ func (a *App) Start(ctx context.Context) error {
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", a.config.ServerPort),
 		Handler: a.router,
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
 	}
 
 	// MongoDB
@@ -74,7 +78,7 @@ func (a *App) Start(ctx context.Context) error {
 		}
 	}()
 
-	fmt.Println("Starting server...")
+	fmt.Println("Starting server on ", a.config.ServerPort)
 	// Making a channel, basically a type that allows communication between goroutines
 	ch := make(chan error, 1)
 	a.performInitTasks(ctx)
