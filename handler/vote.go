@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ruvice/dotabackseaterbackend/model"
 	"github.com/ruvice/dotabackseaterbackend/repository"
+	"github.com/ruvice/dotabackseaterbackend/utils/errors"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
@@ -61,7 +63,9 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 	h.Repo.AddVote(r.Context(), VoteBody.ChannelID, VoteBody.ItemID, VoteBody.TwitchID)
 
 	// Enough votes accumulated
-	if voteCount > VoteThreshold {
+	voteThreshold := h.getVoteThreshold(r.Context(), VoteBody.ChannelID)
+	fmt.Println("voteThreshold:", voteThreshold)
+	if voteCount > voteThreshold {
 		votedItem := h.handleThresholdFulfilled(r.Context(), VoteBody.ChannelID)
 		message := fmt.Sprintf("Chat thinks you should buy %s!", votedItem.Name)
 
@@ -73,6 +77,39 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (h *Vote) getVoteThreshold(ctx context.Context, channelID string) int64 {
+	fmt.Println("Getting vote threshold for:", channelID)
+	voteThresholdString, err := h.Repo.GetVoteThreshold(ctx, channelID)
+	if err != nil {
+		if err.Code == errors.CodeMissingCacheVoteThreshold {
+			fmt.Println("missing vote threshold cache:", err)
+			voteThresholdString, twitchGetConfigErr := h.TwitchWrapper.GetStreamerConfig(channelID)
+			if twitchGetConfigErr != nil {
+				h.Repo.UpdateVoteThresholdForChannel(ctx, channelID, strconv.Itoa(VoteThreshold))
+				return VoteThreshold
+			} else {
+				h.Repo.UpdateVoteThresholdForChannel(ctx, channelID, voteThresholdString)
+				fmt.Println("retrieved vote threshold:", voteThresholdString)
+				voteThreshold, stringConvErr := strconv.ParseInt(voteThresholdString, 10, 64)
+				if stringConvErr != nil {
+					fmt.Println("Failed to convert vote threshold to int64")
+					return VoteThreshold
+				}
+				return voteThreshold
+			}
+		} else {
+			return VoteThreshold
+		}
+	}
+	fmt.Println("retrieved vote threshold:", voteThresholdString)
+	voteThreshold, stringConvErr := strconv.ParseInt(voteThresholdString, 10, 64)
+	if stringConvErr != nil {
+		fmt.Println("Failed to convert vote threshold to int64")
+		return VoteThreshold
+	}
+	return voteThreshold
 }
 
 func (h *Vote) ListV3(w http.ResponseWriter, r *http.Request) {

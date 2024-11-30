@@ -17,6 +17,7 @@ const (
 	CodeVoteRelationExpirationError
 	CodeItemRefreshError
 	CodeItemGetRedisError
+	CodeMissingCacheVoteThreshold
 	CodeUnknown
 )
 

@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/ruvice/dotabackseaterbackend/repository"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
 type TwitchHandler struct {
+	Repo          *repository.RedisRepo
 	TwitchWrapper *wrapper.TwitchWrapper
 }
 
@@ -45,5 +49,23 @@ func (h *TwitchHandler) SendTwitchFEMessage(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		fmt.Println("Error with send Twitch Message API: ", err)
 	}
-	return
+}
+
+func (h *TwitchHandler) GetStreamerConfig(w http.ResponseWriter, r *http.Request) {
+	channelIDParam := chi.URLParam(r, "channelID")
+	fmt.Println("Fetching streamer config for:", channelIDParam)
+	time.Sleep(2 * time.Second)
+	voteThreshold, err := h.TwitchWrapper.GetStreamerConfig(channelIDParam)
+	if err != nil {
+		fmt.Println("Error retrieving configuration", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	fmt.Println("In Twitch handler:", voteThreshold)
+	fmt.Println("Updating streamer config in redis")
+	err = h.Repo.UpdateVoteThresholdForChannel(r.Context(), channelIDParam, voteThreshold)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	w.WriteHeader(http.StatusOK)
 }

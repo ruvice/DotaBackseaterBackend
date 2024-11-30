@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -38,6 +40,22 @@ type TwitchMessagePayload struct {
 type TwitchMessage struct {
 	Message   string `json:"message,omitempty"`
 	ChannelID string `json:"channel_id,omitempty"`
+}
+
+type TwitchStreamerConfigPayload struct {
+	BroadcasterID string `json:"broadcaster_id,omitempty"`
+	ExtensionID   string `json:"extension_id,omitempty"`
+	Segment       string `json:"segment,omitempty"`
+}
+
+type TwitchStreamerConfigResponse struct {
+	Data []TwitchStreamerConfigContent `json:"data"`
+}
+
+type TwitchStreamerConfigContent struct {
+	Segment string `json:"segment"`
+	Content string `json:"content"`
+	Version string `json:"version"`
 }
 
 var (
@@ -188,44 +206,46 @@ func (w *TwitchWrapper) SendFEMessage(channelID string, message string, ebs_toke
 }
 
 // Send message to Twitch API
-func (w *TwitchWrapper) SendMessageNew(twitchMessage TwitchMessage) error {
-	// Load configuration
+func (w *TwitchWrapper) GetStreamerConfig(channelID string) (string, error) {
 	// Generate JWT for authentication
+	fmt.Println("In Getting Streamer Config")
 	jwtToken, err := w.generateJWT()
 	if err != nil {
-		return fmt.Errorf("failed to generate JWT: %v", err)
-	}
-
-	// Create message payload
-	payload := TwitchMessagePayload{
-		BroadcasterID:    twitchMessage.ChannelID,
-		Text:             twitchMessage.Message,
-		ExtensionID:      w.twitchConfig.ClientID,
-		ExtensionVersion: w.twitchConfig.ExtensionVersion,
-	}
-
-	// Convert payload to JSON
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal payload: %v", err)
+		return "", fmt.Errorf("failed to generate JWT: %v", err)
 	}
 
 	// Make the HTTP request to the Twitch API
-	req, err := http.NewRequest("POST", "https://api.twitch.tv/helix/extensions/chat", bytes.NewBuffer(payloadJSON))
+	baseURL := "https://api.twitch.tv/helix/extensions/configurations"
+
+	// Create a URL object
+	u, err := url.Parse(baseURL)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %v", err)
+		fmt.Printf("Error parsing URL: %v\n", err)
+		return "", fmt.Errorf("error parsing URL: %v", err)
+	}
+
+	// Add query parameters
+	q := u.Query()
+	q.Set("broadcaster_id", channelID)
+	q.Set("extension_id", w.twitchConfig.ClientID)
+	q.Set("segment", "broadcaster")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequest("GET", u.String(), nil)
+	fmt.Println("Twitch Config URI", u.String())
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %v", err)
 	}
 
 	// Set headers
 	req.Header.Set("Client-ID", w.twitchConfig.ClientID)
 	req.Header.Set("Authorization", "Bearer "+jwtToken)
-	req.Header.Set("Content-Type", "application/json")
 
 	// Send the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %v", err)
+		return "", fmt.Errorf("failed to send request: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -233,11 +253,26 @@ func (w *TwitchWrapper) SendMessageNew(twitchMessage TwitchMessage) error {
 	fmt.Printf("Response status: %d\n", resp.StatusCode)
 	fmt.Printf("Rate Limit Remaining: %s/%s\n", resp.Header.Get("ratelimit-remaining"), resp.Header.Get("ratelimit-limit"))
 
-	// Check if the request failed
-	if resp.StatusCode != 204 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("error response from Twitch: %s", string(body))
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Error reading response body: %v\n", err)
+		return "", fmt.Errorf("error reading response from Twitch: %v", err)
 	}
 
-	return nil
+	var response TwitchStreamerConfigResponse
+	err = json.Unmarshal([]byte(body), &response)
+	if err != nil {
+		fmt.Printf("Error parsing JSON: %v\n", err)
+		return "", fmt.Errorf("error parsing JSON from Twitch: %v", err)
+	}
+	for _, content := range response.Data {
+		if content.Segment == "broadcaster" {
+			fmt.Printf("Segment: %s, Content: %s, Version: %s\n", content.Segment, content.Content, content.Version)
+
+			// Remove quotes from the string
+			trimmed := strings.Trim(content.Content, `"`)
+			return trimmed, nil
+		}
+	}
+	return "", fmt.Errorf("failed to retrieve streamer vote threshold")
 }

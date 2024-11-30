@@ -39,6 +39,7 @@ func (a *App) loadRoutes() {
 	// Doing this ensures that everything debugRoutes receives will have the debug prefix
 	router.Route("/debug", a.debugRoutes)
 	router.Route("/item", a.loadItemRoutes)
+	router.Route("/config", a.loadStreamerConfigRoutes)
 
 	a.router = router
 }
@@ -70,6 +71,16 @@ func (a *App) loadItemRoutes(router chi.Router) {
 	}
 	router.Get("/", itemHandler.GetItems)
 	router.Get("/refreshItems", itemHandler.RefreshItems)
+}
+
+func (a *App) loadStreamerConfigRoutes(router chi.Router) {
+	twitchHandler := &handler.TwitchHandler{
+		TwitchWrapper: a.twitchWrapper,
+		Repo: &repository.RedisRepo{
+			Client: a.rdb,
+		},
+	}
+	router.Get("/{channelID}", twitchHandler.GetStreamerConfig)
 }
 
 func (a *App) debugRoutes(router chi.Router) {
