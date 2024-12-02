@@ -23,7 +23,7 @@ func LoadConfig() Config {
 		fmt.Println("Failed to get .env")
 	}
 
-	REDIS_ADDR := os.Getenv("REDIS_ADDR")
+	// REDIS_ADDR := os.Getenv("REDIS_ADDR")
 	serverPortStr := os.Getenv("SERVER_PORT")
 	if serverPortStr == "" {
 		fmt.Println("SERVER_PORT is not set in the environment")
@@ -38,7 +38,7 @@ func LoadConfig() Config {
 		fmt.Println("Invalid PORT value: %v", err)
 	}
 	cfg := Config{
-		RedisAddress:  REDIS_ADDR,
+		RedisAddress:  "localhost:6379",
 		ServerPort:    SERVER_PORT,
 		TwitchConfig:  LoadTwitchConfig(),
 		MongoDBConfig: LoadMongoDBConfig(),

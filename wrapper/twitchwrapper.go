@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/ruvice/dotabackseaterbackend/utils/voteErrors"
 	"golang.org/x/oauth2/clientcredentials"
 	"golang.org/x/oauth2/twitch"
 )
@@ -106,6 +107,7 @@ func (w *TwitchWrapper) generateJWT() (string, error) {
 func (w *TwitchWrapper) SendMessage(twitchMessage TwitchMessage) error {
 	// Load configuration
 	// Generate JWT for authentication
+	fmt.Println("WHAT THE FUCK")
 	jwtToken, err := w.generateJWT()
 	if err != nil {
 		return fmt.Errorf("failed to generate JWT: %v", err)
@@ -149,6 +151,11 @@ func (w *TwitchWrapper) SendMessage(twitchMessage TwitchMessage) error {
 	fmt.Printf("Rate Limit Remaining: %s/%s\n", resp.Header.Get("ratelimit-remaining"), resp.Header.Get("ratelimit-limit"))
 
 	// Check if the request failed
+	if resp.StatusCode == http.StatusTooManyRequests {
+		fmt.Println("Too many requests: ", resp)
+		return voteErrors.NewError(voteErrors.CodeTwitchMessageTooManyRequests, "Too many requests")
+	}
+
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("error response from Twitch: %s", string(body))

@@ -1,4 +1,4 @@
-package errors
+package voteErrors
 
 import "fmt"
 
@@ -18,6 +18,7 @@ const (
 	CodeItemRefreshError
 	CodeItemGetRedisError
 	CodeMissingCacheVoteThreshold
+	CodeTwitchMessageTooManyRequests
 	CodeUnknown
 )
 

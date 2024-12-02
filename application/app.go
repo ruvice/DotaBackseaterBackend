@@ -2,11 +2,9 @@ package application
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"sort"
 	"time"
 
@@ -51,9 +49,9 @@ func (a *App) Start(ctx context.Context) error {
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", a.config.ServerPort),
 		Handler: a.router,
-		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		},
+		// TLSConfig: &tls.Config{
+		// 	MinVersion: tls.VersionTLS12,
+		// },
 	}
 
 	// MongoDB
@@ -85,13 +83,13 @@ func (a *App) Start(ctx context.Context) error {
 
 	// GoRoutine~
 	go func() {
-		// err = server.ListenAndServe()
-		certPath := os.Getenv("SSL_CERT_PATH")
-		keyPath := os.Getenv("SSL_KEY_PATH")
-		err = server.ListenAndServeTLS(
-			certPath,
-			keyPath,
-		)
+		err = server.ListenAndServe()
+		// certPath := os.Getenv("SSL_CERT_PATH")
+		// keyPath := os.Getenv("SSL_KEY_PATH")
+		// err = server.ListenAndServeTLS(
+		// 	certPath,
+		// 	keyPath,
+		// )
 		// Error wrapping pog!
 		if err != nil {
 			fmt.Println("failed to start server:", err)
