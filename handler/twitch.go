@@ -16,6 +16,10 @@ type TwitchHandler struct {
 	TwitchWrapper *wrapper.TwitchWrapper
 }
 
+type StreamerConfigResponse struct {
+	VoteThreshold string `json:"vote_threshold,omitempty"`
+}
+
 func (h *TwitchHandler) SendTwitchMessage(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Sending Twitch message")
 	var body wrapper.TwitchMessage
@@ -66,6 +70,18 @@ func (h *TwitchHandler) GetStreamerConfig(w http.ResponseWriter, r *http.Request
 	err = h.Repo.UpdateVoteThresholdForChannel(r.Context(), channelIDParam, voteThreshold)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+
+	response := StreamerConfigResponse{
+		VoteThreshold: voteThreshold,
+	}
+
+	// Write the JSON string directly to the HTTP response
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, "Unable to encode JSON", http.StatusInternalServerError)
+	}
 }
