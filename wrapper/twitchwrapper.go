@@ -251,7 +251,7 @@ func (w *TwitchWrapper) GetStreamerConfig(channelID string) (string, error) {
 
 	// Log the response, including rate limits
 	fmt.Printf("Response status: %d\n", resp.StatusCode)
-	fmt.Printf("Rate Limit Remaining: %s/%s\n", resp.Header.Get("ratelimit-remaining"), resp.Header.Get("ratelimit-limit"))
+	fmt.Printf("Rate Limit Remaining: %s/%s %s\n", resp.Header.Get("ratelimit-remaining"), resp.Header.Get("ratelimit-limit"), resp.Header.Get("ratelimit-reset"))
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

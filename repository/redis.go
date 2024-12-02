@@ -188,7 +188,6 @@ func (r *RedisRepo) GetVoteThreshold(ctx context.Context, channelID string) (str
 	key := "voteThreshold:" + channelID
 	fmt.Println("In Redis GetVoteThreshold", key)
 	voteThreshold, err := r.Client.Get(ctx, key).Result()
-	fmt.Println("In Redis GetVoteThreshold err:", err)
 	if err == redis.Nil {
 		fmt.Printf("Could not find key: %v\n", err)
 		return "", errors.NewError(errors.CodeMissingCacheVoteThreshold, "Could not find vote threshold cache")

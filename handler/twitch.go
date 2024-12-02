@@ -55,7 +55,7 @@ func (h *TwitchHandler) SendTwitchFEMessage(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (h *TwitchHandler) GetStreamerConfig(w http.ResponseWriter, r *http.Request) {
+func (h *TwitchHandler) RefreshStreamerConfig(w http.ResponseWriter, r *http.Request) {
 	channelIDParam := chi.URLParam(r, "channelID")
 	fmt.Println("Fetching streamer config for:", channelIDParam)
 	time.Sleep(2 * time.Second)
@@ -82,6 +82,31 @@ func (h *TwitchHandler) GetStreamerConfig(w http.ResponseWriter, r *http.Request
 	// Write the JSON string directly to the HTTP response
 	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
+		http.Error(w, "Unable to encode JSON", http.StatusInternalServerError)
+	}
+}
+
+func (h *TwitchHandler) GetStreamerConfig(w http.ResponseWriter, r *http.Request) {
+	channelIDParam := chi.URLParam(r, "channelID")
+	fmt.Println("Fetching streamer config for:", channelIDParam)
+	time.Sleep(2 * time.Second)
+
+	voteThreshold, err := h.Repo.GetVoteThreshold(r.Context(), channelIDParam)
+	if err != nil {
+		fmt.Println("Error retrieving configuration", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	response := StreamerConfigResponse{
+		VoteThreshold: voteThreshold,
+	}
+
+	// Write the JSON string directly to the HTTP response
+	jsonEncodeErr := json.NewEncoder(w).Encode(response)
+	if jsonEncodeErr != nil {
 		http.Error(w, "Unable to encode JSON", http.StatusInternalServerError)
 	}
 }

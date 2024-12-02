@@ -80,6 +80,7 @@ func (a *App) loadStreamerConfigRoutes(router chi.Router) {
 			Client: a.rdb,
 		},
 	}
+	router.Post("/{channelID}", twitchHandler.RefreshStreamerConfig)
 	router.Get("/{channelID}", twitchHandler.GetStreamerConfig)
 }
 
