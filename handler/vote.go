@@ -67,7 +67,7 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 	// Enough votes accumulated
 	voteThreshold := h.getVoteThreshold(r.Context(), VoteBody.ChannelID)
 	fmt.Println("voteThreshold:", voteThreshold)
-	if voteCount > voteThreshold {
+	if voteCount >= voteThreshold {
 		votedItem := h.handleThresholdFulfilled(r.Context(), VoteBody.ChannelID)
 		message := fmt.Sprintf("Chat thinks you should buy %s!", votedItem.Name)
 
