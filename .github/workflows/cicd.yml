@@ -37,7 +37,7 @@ jobs:
 
       - name: Check Disk Space on EC2
         run: |
-          ssh -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} "df -h"
+          ssh -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no ruvice@${{ secrets.EC2_HOST }} "df -h"
 
       - name: Check File Size and Network Status
         run: |
