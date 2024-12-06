@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/ruvice/dotabackseaterbackend/repository"
@@ -13,10 +13,10 @@ type ItemHandler struct {
 }
 
 func (h *ItemHandler) GetItems(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Get Items")
+	log.Println("Get Items")
 	itemJsonString, err := h.Redis.GetItemMapFromCache(r.Context())
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -29,10 +29,10 @@ func (h *ItemHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ItemHandler) RefreshItems(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Refreshing Items")
+	log.Println("Refreshing Items")
 	itemMap, err := h.DB.RefreshItems(r.Context())
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

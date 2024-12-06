@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -31,10 +32,10 @@ var VoteBody struct {
 }
 
 func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("New vote")
+	log.Println("New vote")
 
 	if err := json.NewDecoder(r.Body).Decode(&VoteBody); err != nil {
-		fmt.Println("body fked up")
+		log.Println("body fked up")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -43,7 +44,7 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 	if ttl <= 0 {
 		voteError := h.Redis.AddVoteRelation(r.Context(), VoteBody.ChannelID, VoteBody.TwitchID)
 		if voteError != nil {
-			fmt.Println(voteError)
+			log.Println(voteError)
 		}
 	} else {
 		w.Header().Set("Access-Control-Expose-Headers", "Retry-After") // Expose Retry-After header
@@ -59,7 +60,7 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 
 	voteCount, incrementErr := h.Redis.IncrementForChannel(r.Context(), VoteBody.ChannelID)
 	if incrementErr != nil {
-		fmt.Println("Failed to increment count in Redis: ", incrementErr)
+		log.Println("Failed to increment count in Redis: ", incrementErr)
 		// w.WriteHeader(http.StatusInternalServerError)
 		// return
 	}
@@ -67,7 +68,7 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 
 	// Enough votes accumulated
 	voteThreshold := h.getVoteThreshold(r.Context(), VoteBody.ChannelID)
-	fmt.Println("voteThreshold:", voteThreshold)
+	log.Println("voteThreshold:", voteThreshold)
 	if voteCount >= voteThreshold {
 		votedItem := h.handleThresholdFulfilled(r.Context(), VoteBody.ChannelID)
 		message := fmt.Sprintf("Chat thinks you should buy %s!", votedItem.Name)
@@ -81,7 +82,7 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 			err := h.TwitchWrapper.SendMessage(twitchMessage)
 			if vErr := new(voteErrors.VoteError); errors.As(err, &vErr) {
 				if vErr.Code == voteErrors.CodeTwitchMessageTooManyRequests {
-					fmt.Println("Too many requests error:", vErr.Message)
+					log.Println("Too many requests error:", vErr.Message)
 					h.handleVoteMessageTooManyRequests(r.Context(), VoteBody.ChannelID)
 				}
 			}
@@ -92,26 +93,26 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Vote) handleVoteMessageTooManyRequests(ctx context.Context, channelID string) {
-	fmt.Println("Handling backoff")
+	log.Println("Handling backoff")
 	h.Redis.SetTwitchMessageAPITimeout(ctx, channelID)
 }
 
 func (h *Vote) getVoteThreshold(ctx context.Context, channelID string) int64 {
-	fmt.Println("Getting vote threshold for:", channelID)
+	log.Println("Getting vote threshold for:", channelID)
 	voteThresholdString, err := h.Redis.GetVoteThreshold(ctx, channelID)
 	if err != nil {
 		if err.Code == voteErrors.CodeMissingCacheVoteThreshold {
-			fmt.Println("missing vote threshold cache:", err)
+			log.Println("missing vote threshold cache:", err)
 			voteThresholdString, twitchGetConfigErr := h.TwitchWrapper.GetStreamerConfig(channelID)
 			if twitchGetConfigErr != nil {
 				h.Redis.UpdateVoteThresholdForChannel(ctx, channelID, strconv.Itoa(VoteThreshold))
 				return VoteThreshold
 			} else {
 				h.Redis.UpdateVoteThresholdForChannel(ctx, channelID, voteThresholdString)
-				fmt.Println("retrieved vote threshold:", voteThresholdString)
+				log.Println("retrieved vote threshold:", voteThresholdString)
 				voteThreshold, stringConvErr := strconv.ParseInt(voteThresholdString, 10, 64)
 				if stringConvErr != nil {
-					fmt.Println("Failed to convert vote threshold to int64")
+					log.Println("Failed to convert vote threshold to int64")
 					return VoteThreshold
 				}
 				return voteThreshold
@@ -120,10 +121,10 @@ func (h *Vote) getVoteThreshold(ctx context.Context, channelID string) int64 {
 			return VoteThreshold
 		}
 	}
-	fmt.Println("retrieved vote threshold:", voteThresholdString)
+	log.Println("retrieved vote threshold:", voteThresholdString)
 	voteThreshold, stringConvErr := strconv.ParseInt(voteThresholdString, 10, 64)
 	if stringConvErr != nil {
-		fmt.Println("Failed to convert vote threshold to int64")
+		log.Println("Failed to convert vote threshold to int64")
 		return VoteThreshold
 	}
 	return voteThreshold
@@ -139,7 +140,7 @@ func (h *Vote) ListV3(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(response)
 	if err != nil {
-		fmt.Println("failed to marshal:", err)
+		log.Println("failed to marshal:", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
