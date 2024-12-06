@@ -9,7 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/ruvice/dotabackseaterbackend/model"
-	"github.com/ruvice/dotabackseaterbackend/utils/voteErrors"
+	"github.com/ruvice/dotabackseaterbackend/utils/DBSError"
 )
 
 // Handling items
@@ -40,11 +40,11 @@ func (r *RedisRepo) WriteItemMapToCache(ctx context.Context, itemMap model.ItemM
 	return
 }
 
-func (r *RedisRepo) GetItemMapFromCache(ctx context.Context) (string, *voteErrors.VoteError) {
+func (r *RedisRepo) GetItemMapFromCache(ctx context.Context) (string, *DBSError.VoteError) {
 	jsonData, err := r.Client.Get(ctx, "itemMapCache").Result()
 	if err != nil {
 		log.Println("Error getting itemMapCache: ", err)
-		voteError := voteErrors.NewError(voteErrors.CodeItemGetRedisError, "Failed to get Item Map for client from Redis")
+		voteError := DBSError.NewError(DBSError.CodeItemGetRedisError, "Failed to get Item Map for client from Redis")
 		return "", voteError
 	}
 

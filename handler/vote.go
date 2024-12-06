@@ -12,7 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ruvice/dotabackseaterbackend/model"
 	"github.com/ruvice/dotabackseaterbackend/repository/redisRepo"
-	"github.com/ruvice/dotabackseaterbackend/utils/voteErrors"
+	"github.com/ruvice/dotabackseaterbackend/utils/DBSError"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
@@ -80,8 +80,8 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 		timeout := h.Redis.GetTwitchMessageAPITimeout(r.Context(), VoteBody.ChannelID)
 		if timeout < 0 {
 			err := h.TwitchWrapper.SendMessage(twitchMessage)
-			if vErr := new(voteErrors.VoteError); errors.As(err, &vErr) {
-				if vErr.Code == voteErrors.CodeTwitchMessageTooManyRequests {
+			if vErr := new(DBSError.VoteError); errors.As(err, &vErr) {
+				if vErr.Code == DBSError.CodeTwitchMessageTooManyRequests {
 					log.Println("Too many requests error:", vErr.Message)
 					h.handleVoteMessageTooManyRequests(r.Context(), VoteBody.ChannelID)
 				}
@@ -101,7 +101,7 @@ func (h *Vote) getVoteThreshold(ctx context.Context, channelID string) int64 {
 	log.Println("Getting vote threshold for:", channelID)
 	voteThresholdString, err := h.Redis.GetVoteThreshold(ctx, channelID)
 	if err != nil {
-		if err.Code == voteErrors.CodeMissingCacheVoteThreshold {
+		if err.Code == DBSError.CodeMissingCacheVoteThreshold {
 			log.Println("missing vote threshold cache:", err)
 			voteThresholdString, twitchGetConfigErr := h.TwitchWrapper.GetStreamerConfig(channelID)
 			if twitchGetConfigErr != nil {

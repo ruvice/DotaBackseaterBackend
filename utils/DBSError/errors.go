@@ -1,4 +1,4 @@
-package configError
+package DBSError
 
 import "fmt"
 
@@ -29,12 +29,44 @@ func (e *ConfigError) Unwrap() error {
 	return e.Err
 }
 
-// NewConfigError creates a new ConfigError.
+// NewConfigError creates a new DBSError.
 func NewConfigError(funcName string, code ConfigErrorCode, message string, err error) *ConfigError {
 	return &ConfigError{
 		FuncName: funcName,
 		Code:     code,
 		Message:  message,
 		Err:      err,
+	}
+}
+
+type ErrorCode int
+
+// Define a custom error type
+type VoteError struct {
+	Message string
+	Code    ErrorCode
+}
+
+const (
+	CodeVotedItemNotFound ErrorCode = iota + 1
+	CodeUpdateVoteError
+	CodeVoteRelationCreationError
+	CodeVoteRelationExpirationError
+	CodeItemRefreshError
+	CodeItemGetRedisError
+	CodeMissingCacheVoteThreshold
+	CodeTwitchMessageTooManyRequests
+	CodeUnknown
+)
+
+// Implement the `Error()` method for the `error` interface
+func (e *VoteError) Error() string {
+	return fmt.Sprintf("Error: %s (Code: %d)", e.Message, e.Code)
+}
+
+func NewError(code ErrorCode, message string) *VoteError {
+	return &VoteError{
+		Code:    code,
+		Message: message,
 	}
 }

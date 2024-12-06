@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
-	"github.com/ruvice/dotabackseaterbackend/utils/configError"
+	"github.com/ruvice/dotabackseaterbackend/utils/DBSError"
 )
 
 type MongoDBConfig struct {
@@ -14,7 +14,7 @@ type MongoDBConfig struct {
 func LoadMongoDBConfig() (MongoDBConfig, error) {
 	err := godotenv.Load()
 	if err != nil {
-		return MongoDBConfig{}, configError.NewConfigError("LoadConfig", configError.ErrInvalidMongoConfig, "invalid Mongo Config", err)
+		return MongoDBConfig{}, DBSError.NewConfigError("LoadConfig", DBSError.ErrInvalidMongoConfig, "invalid Mongo Config", err)
 	}
 
 	MONGO_URI := os.Getenv("MONGO_URI")

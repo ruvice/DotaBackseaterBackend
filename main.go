@@ -9,7 +9,7 @@ import (
 
 	"github.com/ruvice/dotabackseaterbackend/application"
 	"github.com/ruvice/dotabackseaterbackend/config"
-	"github.com/ruvice/dotabackseaterbackend/utils/configError"
+	"github.com/ruvice/dotabackseaterbackend/utils/DBSError"
 )
 
 func main() {
@@ -28,18 +28,18 @@ func main() {
 }
 
 func handleLoadConfigError(err error) {
-	var cfgErr *configError.ConfigError
+	var cfgErr *DBSError.ConfigError
 	if errors.As(err, &cfgErr) {
 		switch cfgErr.Code {
-		case configError.ErrMissingEnv:
+		case DBSError.ErrMissingEnv:
 			log.Fatalf("Configuration error: %s (missing environment variable)", cfgErr.Message)
-		case configError.ErrInvalidValue:
+		case DBSError.ErrInvalidValue:
 			log.Fatalf("Configuration error: %s (invalid value)", cfgErr.Message)
-		case configError.ErrFileNotFound:
+		case DBSError.ErrFileNotFound:
 			log.Fatalf("Configuration error: %s (file not found)", cfgErr.Message)
-		case configError.ErrInvalidMongoConfig:
+		case DBSError.ErrInvalidMongoConfig:
 			log.Fatalf("Configuration error: %s (invalid mongo config)", cfgErr.Message)
-		case configError.ErrInvalidTwitchConfig:
+		case DBSError.ErrInvalidTwitchConfig:
 			log.Fatalf("Configuration error: %s (invalid twitch config)", cfgErr.Message)
 		default:
 			log.Fatalf("Unexpected configuration error: %v", cfgErr)

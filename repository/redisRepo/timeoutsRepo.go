@@ -6,17 +6,17 @@ import (
 	"log"
 	"time"
 
-	"github.com/ruvice/dotabackseaterbackend/utils/voteErrors"
+	"github.com/ruvice/dotabackseaterbackend/utils/DBSError"
 )
 
-func (r *RedisRepo) AddVoteRelation(ctx context.Context, channelID string, twitchID string) *voteErrors.VoteError {
+func (r *RedisRepo) AddVoteRelation(ctx context.Context, channelID string, twitchID string) *DBSError.VoteError {
 	// Set the key with a 30-second expiration
 	key := channelID + ":" + twitchID
 	value := time.Now()
 	err := r.Client.Set(ctx, key, value, VoteRelationTTL*time.Second).Err()
 	if err != nil {
 		log.Println("failed to write to Redis with expiry: %w", err)
-		voteError := voteErrors.NewError(voteErrors.CodeVoteRelationCreationError, "Unable to add Vote Relation")
+		voteError := DBSError.NewError(DBSError.CodeVoteRelationCreationError, "Unable to add Vote Relation")
 		return voteError
 	}
 
@@ -46,14 +46,14 @@ func (r *RedisRepo) GetVoteRelationTTL(ctx context.Context, channelID string, tw
 }
 
 // Handling too many requests
-func (r *RedisRepo) SetTwitchMessageAPITimeout(ctx context.Context, channelID string) *voteErrors.VoteError {
+func (r *RedisRepo) SetTwitchMessageAPITimeout(ctx context.Context, channelID string) *DBSError.VoteError {
 	// Set the key with a 60-second expiration
 	key := "timeout:" + channelID
 	value := time.Now()
 	err := r.Client.Set(ctx, key, value, APIBackoffTTL*time.Second).Err()
 	if err != nil {
 		log.Println("failed to write to Redis with expiry: %w", err)
-		voteError := voteErrors.NewError(voteErrors.CodeVoteRelationCreationError, "Unable to add Vote Relation")
+		voteError := DBSError.NewError(DBSError.CodeVoteRelationCreationError, "Unable to add Vote Relation")
 		return voteError
 	}
 

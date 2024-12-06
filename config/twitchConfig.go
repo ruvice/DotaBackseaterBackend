@@ -4,14 +4,14 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
-	"github.com/ruvice/dotabackseaterbackend/utils/configError"
+	"github.com/ruvice/dotabackseaterbackend/utils/DBSError"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
 func LoadTwitchConfig() (wrapper.TwitchConfig, error) {
 	err := godotenv.Load()
 	if err != nil {
-		return wrapper.TwitchConfig{}, configError.NewConfigError("LoadConfig", configError.ErrInvalidTwitchConfig, "invalid Twitch Config", err)
+		return wrapper.TwitchConfig{}, DBSError.NewConfigError("LoadConfig", DBSError.ErrInvalidTwitchConfig, "invalid Twitch Config", err)
 	}
 
 	// Access environment variables
