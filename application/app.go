@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/ruvice/dotabackseaterbackend/config"
 	"github.com/ruvice/dotabackseaterbackend/repository"
+	"github.com/ruvice/dotabackseaterbackend/repository/redisRepo"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -24,14 +25,14 @@ type App struct {
 	twitchWrapper  *wrapper.TwitchWrapper
 	redisAvailable bool
 	mongoDB        *repository.MongoDBRepo
-	redisRepo      *repository.RedisRepo
+	redisRepo      *redisRepo.RedisRepo
 }
 
 // Returns pointer to instance of App
 func New(ctx context.Context, config config.Config) *App {
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(config.MongoDBConfig.URI))
 	rdb := redis.NewClient(&redis.Options{Addr: config.RedisAddress})
-	redisRepo := &repository.RedisRepo{
+	redisRepo := &redisRepo.RedisRepo{
 		Client: rdb,
 	}
 	mongoDB := &repository.MongoDBRepo{

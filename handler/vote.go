@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ruvice/dotabackseaterbackend/model"
-	"github.com/ruvice/dotabackseaterbackend/repository"
+	"github.com/ruvice/dotabackseaterbackend/repository/redisRepo"
 	"github.com/ruvice/dotabackseaterbackend/utils/voteErrors"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
@@ -21,7 +21,7 @@ const (
 )
 
 type Vote struct {
-	Redis         *repository.RedisRepo
+	Redis         *redisRepo.RedisRepo
 	TwitchWrapper *wrapper.TwitchWrapper
 }
 

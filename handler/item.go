@@ -5,11 +5,12 @@ import (
 	"net/http"
 
 	"github.com/ruvice/dotabackseaterbackend/repository"
+	"github.com/ruvice/dotabackseaterbackend/repository/redisRepo"
 )
 
 type ItemHandler struct {
 	DB    *repository.MongoDBRepo
-	Redis *repository.RedisRepo
+	Redis *redisRepo.RedisRepo
 }
 
 func (h *ItemHandler) GetItems(w http.ResponseWriter, r *http.Request) {
