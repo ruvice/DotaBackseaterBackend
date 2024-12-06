@@ -200,8 +200,7 @@ func (r *RedisRepo) GetVoteThreshold(ctx context.Context, channelID string) (str
 }
 
 // Handling items
-
-func (r *RedisRepo) writeItemMapToCache(ctx context.Context, itemMap model.ItemMap) {
+func (r *RedisRepo) WriteItemMapToCache(ctx context.Context, itemMap model.ItemMap) {
 	// Step 1: Convert itemMap to a slice of Items
 	// Sort the 'Items' array by the 'Name' field
 	var items []model.Item
@@ -271,8 +270,6 @@ func (r *RedisRepo) CacheItems(ctx context.Context, itemMap model.ItemMap) {
 			fmt.Println("failed to exec:", err)
 		}
 	}
-
-	return
 }
 
 func (r *RedisRepo) clearPreviousItemCache(ctx context.Context) error {

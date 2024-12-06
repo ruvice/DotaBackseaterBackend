@@ -182,11 +182,6 @@ func (r *MongoDBRepo) RefreshItems(ctx context.Context) (model.ItemMap, *voteErr
 			continue
 		}
 		itemKey := key
-		if err != nil {
-			fmt.Println("Invalid item_id key:", key)
-			voteError := voteErrors.NewError(voteErrors.CodeItemRefreshError, "Error Refreshing Items")
-			return model.ItemMap{}, voteError
-		}
 		// Assert that the value is a nested object (bson.M)
 		itemData, ok := value.(bson.M)
 		if !ok {
