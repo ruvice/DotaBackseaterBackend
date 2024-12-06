@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/ruvice/dotabackseaterbackend/config"
 	"github.com/ruvice/dotabackseaterbackend/model"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 	"go.mongodb.org/mongo-driver/bson"
@@ -22,15 +23,14 @@ import (
 type App struct {
 	router         http.Handler
 	rdb            *redis.Client
-	config         Config
+	config         config.Config
 	twitchWrapper  *wrapper.TwitchWrapper
 	redisAvailable bool
 	mongoDB        *mongo.Client
-	mongoAvailable bool
 }
 
 // Returns pointer to instance of App
-func New(ctx context.Context, config Config) *App {
+func New(ctx context.Context, config config.Config) *App {
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(config.MongoDBConfig.URI))
 	if err != nil {
 		fmt.Println("Failed to establish connection with MongoDB, ", err)
@@ -48,13 +48,8 @@ func New(ctx context.Context, config Config) *App {
 }
 
 func (a *App) Start(ctx context.Context) error {
-	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", a.config.ServerPort),
-		Handler: a.router,
-		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		},
-	}
+	debugMode := os.Getenv("DEBUG") == "true"
+	server := a.getHttpServer()
 
 	// MongoDB
 	err := a.mongoDB.Ping(ctx, readpref.Primary())
@@ -62,11 +57,10 @@ func (a *App) Start(ctx context.Context) error {
 		fmt.Println("Problem reading MongoDB, ", err)
 	}
 
-	databases, err := a.mongoDB.ListDatabaseNames(ctx, bson.M{})
+	_, err = a.mongoDB.ListDatabaseNames(ctx, bson.M{})
 	if err != nil {
 		fmt.Println("Problem reading database names, ", err)
 	}
-	fmt.Println(databases)
 	a.checkRedisHealth(ctx)
 	defer func() {
 		if err := a.rdb.Close(); err != nil {
@@ -85,13 +79,16 @@ func (a *App) Start(ctx context.Context) error {
 
 	// GoRoutine~
 	go func() {
-		// err = server.ListenAndServe()
-		certPath := os.Getenv("SSL_CERT_PATH")
-		keyPath := os.Getenv("SSL_KEY_PATH")
-		err = server.ListenAndServeTLS(
-			certPath,
-			keyPath,
-		)
+		if debugMode {
+			err = server.ListenAndServe()
+		} else {
+			certPath := os.Getenv("SSL_CERT_PATH")
+			keyPath := os.Getenv("SSL_KEY_PATH")
+			err = server.ListenAndServeTLS(
+				certPath,
+				keyPath,
+			)
+		}
 		// Error wrapping pog!
 		if err != nil {
 			ch <- fmt.Errorf("failed to start server:  %w", err)
@@ -107,6 +104,26 @@ func (a *App) Start(ctx context.Context) error {
 		defer cancel()
 		return server.Shutdown(timeout)
 	}
+}
+
+func (a *App) getHttpServer() *http.Server {
+	debugMode := os.Getenv("DEBUG") == "true"
+	var server http.Server
+	if debugMode {
+		server = http.Server{
+			Addr:    fmt.Sprintf(":%d", a.config.ServerPort),
+			Handler: a.router,
+		}
+	} else {
+		server = http.Server{
+			Addr:    fmt.Sprintf(":%d", a.config.ServerPort),
+			Handler: a.router,
+			TLSConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+		}
+	}
+	return &server
 }
 
 func (a *App) checkRedisHealth(ctx context.Context) {
@@ -149,10 +166,6 @@ func (a *App) getItemsFromMongo(ctx context.Context) model.ItemMap {
 			continue
 		}
 		itemKey := key
-		if err != nil {
-			fmt.Println("Invalid item_id key:", key)
-			return model.ItemMap{}
-		}
 		// Assert that the value is a nested object (bson.M)
 		itemData, ok := value.(bson.M)
 		if !ok {

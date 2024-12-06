@@ -1,17 +1,17 @@
-package application
+package config
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/ruvice/dotabackseaterbackend/utils/configError"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
-func LoadTwitchConfig() wrapper.TwitchConfig {
+func LoadTwitchConfig() (wrapper.TwitchConfig, error) {
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("Failed to get .env")
+		return wrapper.TwitchConfig{}, configError.NewConfigError("LoadConfig", configError.ErrInvalidTwitchConfig, "invalid Twitch Config", err)
 	}
 
 	// Access environment variables
@@ -28,5 +28,5 @@ func LoadTwitchConfig() wrapper.TwitchConfig {
 		Scopes:           []string{"user:write:chat", "user:bot", "channel:bot"},
 	}
 
-	return twitchConfig
+	return twitchConfig, nil
 }
