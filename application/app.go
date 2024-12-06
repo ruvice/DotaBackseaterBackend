@@ -11,6 +11,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/ruvice/dotabackseaterbackend/config"
+	"github.com/ruvice/dotabackseaterbackend/repository"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -19,27 +20,32 @@ import (
 type App struct {
 	debugMode      bool
 	router         http.Handler
-	rdb            *redis.Client
 	config         config.Config
 	twitchWrapper  *wrapper.TwitchWrapper
 	redisAvailable bool
-	mongoDB        *mongo.Client
+	mongoDB        *repository.MongoDBRepo
+	redisRepo      *repository.RedisRepo
 }
 
 // Returns pointer to instance of App
 func New(ctx context.Context, config config.Config) *App {
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(config.MongoDBConfig.URI))
+	rdb := redis.NewClient(&redis.Options{Addr: config.RedisAddress})
+	redisRepo := &repository.RedisRepo{
+		Client: rdb,
+	}
+	mongoDB := &repository.MongoDBRepo{
+		Client: mongoClient,
+	}
 	if err != nil {
 		fmt.Println("Failed to establish connection with MongoDB, ", err)
 	}
 	app := &App{
-		rdb: redis.NewClient(&redis.Options{
-			Addr: config.RedisAddress,
-		}),
 		config:        config,
 		twitchWrapper: wrapper.NewTwitchWrapper(config.TwitchConfig),
-		mongoDB:       mongoClient,
+		mongoDB:       mongoDB,
 		debugMode:     os.Getenv("DEBUG") == "true",
+		redisRepo:     redisRepo,
 	}
 	app.loadRoutes()
 	return app

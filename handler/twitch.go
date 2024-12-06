@@ -12,7 +12,7 @@ import (
 )
 
 type TwitchHandler struct {
-	Repo          *repository.RedisRepo
+	Redis         *repository.RedisRepo
 	TwitchWrapper *wrapper.TwitchWrapper
 }
 
@@ -67,7 +67,7 @@ func (h *TwitchHandler) RefreshStreamerConfig(w http.ResponseWriter, r *http.Req
 	}
 	fmt.Println("In Twitch handler:", voteThreshold)
 	fmt.Println("Updating streamer config in redis")
-	err = h.Repo.UpdateVoteThresholdForChannel(r.Context(), channelIDParam, voteThreshold)
+	err = h.Redis.UpdateVoteThresholdForChannel(r.Context(), channelIDParam, voteThreshold)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -91,7 +91,7 @@ func (h *TwitchHandler) GetStreamerConfig(w http.ResponseWriter, r *http.Request
 	fmt.Println("Fetching streamer config for:", channelIDParam)
 	time.Sleep(2 * time.Second)
 
-	voteThreshold, err := h.Repo.GetVoteThreshold(r.Context(), channelIDParam)
+	voteThreshold, err := h.Redis.GetVoteThreshold(r.Context(), channelIDParam)
 	if err != nil {
 		voteThreshold, err := h.TwitchWrapper.GetStreamerConfig(channelIDParam)
 		if err != nil {
@@ -99,7 +99,7 @@ func (h *TwitchHandler) GetStreamerConfig(w http.ResponseWriter, r *http.Request
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		err = h.Repo.UpdateVoteThresholdForChannel(r.Context(), channelIDParam, voteThreshold)
+		err = h.Redis.UpdateVoteThresholdForChannel(r.Context(), channelIDParam, voteThreshold)
 		if err != nil {
 			fmt.Println("Couldn't write to redis cache", err)
 		}

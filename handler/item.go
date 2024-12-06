@@ -8,13 +8,13 @@ import (
 )
 
 type ItemHandler struct {
-	DB   *repository.MongoDBRepo
-	Repo *repository.RedisRepo
+	DB    *repository.MongoDBRepo
+	Redis *repository.RedisRepo
 }
 
 func (h *ItemHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Get Items")
-	itemJsonString, err := h.Repo.GetItemMapFromCache(r.Context())
+	itemJsonString, err := h.Redis.GetItemMapFromCache(r.Context())
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -36,6 +36,6 @@ func (h *ItemHandler) RefreshItems(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	h.Repo.CacheItems(r.Context(), itemMap)
+	h.Redis.CacheItems(r.Context(), itemMap)
 	w.WriteHeader(http.StatusOK)
 }

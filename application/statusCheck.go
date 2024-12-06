@@ -10,13 +10,13 @@ import (
 
 func (a *App) CheckMongoStatus(ctx context.Context) error {
 	// MongoDB
-	err := a.mongoDB.Ping(ctx, readpref.Primary())
+	err := a.mongoDB.Client.Ping(ctx, readpref.Primary())
 	if err != nil {
 		fmt.Println("Problem reading MongoDB, ", err)
 		return err
 	}
 
-	_, err = a.mongoDB.ListDatabaseNames(ctx, bson.M{})
+	_, err = a.mongoDB.Client.ListDatabaseNames(ctx, bson.M{})
 	if err != nil {
 		fmt.Println("Problem reading database names, ", err)
 		return err
@@ -25,7 +25,7 @@ func (a *App) CheckMongoStatus(ctx context.Context) error {
 }
 
 func (a *App) CheckRedisStatus(ctx context.Context) error {
-	err := a.rdb.Ping(ctx).Err()
+	err := a.redisRepo.Client.Ping(ctx).Err()
 	if err != nil {
 		fmt.Println("failed to connect to server:  %w", err)
 		return err

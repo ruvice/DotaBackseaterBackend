@@ -18,7 +18,7 @@ func (a *App) PerformInitTasks(ctx context.Context) {
 }
 
 func (a *App) getItemsFromMongo(ctx context.Context) model.ItemMap {
-	twitchExtensionDatabase := a.mongoDB.Database("itemDatabase")
+	twitchExtensionDatabase := a.mongoDB.Client.Database("itemDatabase")
 	channelCollection := twitchExtensionDatabase.Collection("itemsValid")
 
 	filter := bson.M{}
@@ -92,7 +92,7 @@ func (a *App) writeItemMapToCache(ctx context.Context, itemMap model.ItemMap) {
 	}
 
 	// Write the JSON string to Redis
-	if err := a.rdb.Set(ctx, "itemMapCache", jsonData, 0).Err(); err != nil {
+	if err := a.redisRepo.Client.Set(ctx, "itemMapCache", jsonData, 0).Err(); err != nil {
 		fmt.Println("failed to write to Redis: ", err)
 		return
 	}
@@ -111,7 +111,7 @@ func (a *App) writeItemsToCache(ctx context.Context, itemMap model.ItemMap) {
 		key := "itemID:" + itemID
 
 		// Using transaction to make changes atomic
-		txn := a.rdb.TxPipeline()
+		txn := a.redisRepo.Client.TxPipeline()
 
 		res := txn.Set(ctx, key, string(data), 0)
 		if err := res.Err(); err != nil {
@@ -127,11 +127,11 @@ func (a *App) writeItemsToCache(ctx context.Context, itemMap model.ItemMap) {
 
 func (a *App) Cleanup(ctx context.Context) {
 	log.Println("Cleaning up resources")
-	if err := a.rdb.Close(); err != nil {
+	if err := a.redisRepo.Client.Close(); err != nil {
 		log.Printf("Failed to close Redis: %v", err)
 	}
 
-	if err := a.mongoDB.Disconnect(ctx); err != nil {
+	if err := a.mongoDB.Client.Disconnect(ctx); err != nil {
 		log.Printf("Failed to disconnect MongoDB: %v", err)
 	}
 }

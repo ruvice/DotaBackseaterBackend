@@ -20,7 +20,7 @@ const (
 )
 
 type Vote struct {
-	Repo          *repository.RedisRepo
+	Redis         *repository.RedisRepo
 	TwitchWrapper *wrapper.TwitchWrapper
 }
 
@@ -39,9 +39,9 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ttl := h.Repo.GetVoteRelationTTL(r.Context(), VoteBody.ChannelID, VoteBody.TwitchID)
+	ttl := h.Redis.GetVoteRelationTTL(r.Context(), VoteBody.ChannelID, VoteBody.TwitchID)
 	if ttl <= 0 {
-		voteError := h.Repo.AddVoteRelation(r.Context(), VoteBody.ChannelID, VoteBody.TwitchID)
+		voteError := h.Redis.AddVoteRelation(r.Context(), VoteBody.ChannelID, VoteBody.TwitchID)
 		if voteError != nil {
 			fmt.Println(voteError)
 		}
@@ -57,13 +57,13 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	voteCount, incrementErr := h.Repo.IncrementForChannel(r.Context(), VoteBody.ChannelID)
+	voteCount, incrementErr := h.Redis.IncrementForChannel(r.Context(), VoteBody.ChannelID)
 	if incrementErr != nil {
 		fmt.Println("Failed to increment count in Redis: ", incrementErr)
 		// w.WriteHeader(http.StatusInternalServerError)
 		// return
 	}
-	h.Repo.AddVote(r.Context(), VoteBody.ChannelID, VoteBody.ItemID, VoteBody.TwitchID)
+	h.Redis.AddVote(r.Context(), VoteBody.ChannelID, VoteBody.ItemID, VoteBody.TwitchID)
 
 	// Enough votes accumulated
 	voteThreshold := h.getVoteThreshold(r.Context(), VoteBody.ChannelID)
@@ -76,7 +76,7 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 			Message:   message,
 			ChannelID: VoteBody.ChannelID,
 		}
-		timeout := h.Repo.GetTwitchMessageAPITimeout(r.Context(), VoteBody.ChannelID)
+		timeout := h.Redis.GetTwitchMessageAPITimeout(r.Context(), VoteBody.ChannelID)
 		if timeout < 0 {
 			err := h.TwitchWrapper.SendMessage(twitchMessage)
 			if vErr := new(voteErrors.VoteError); errors.As(err, &vErr) {
@@ -93,21 +93,21 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 
 func (h *Vote) handleVoteMessageTooManyRequests(ctx context.Context, channelID string) {
 	fmt.Println("Handling backoff")
-	h.Repo.SetTwitchMessageAPITimeout(ctx, channelID)
+	h.Redis.SetTwitchMessageAPITimeout(ctx, channelID)
 }
 
 func (h *Vote) getVoteThreshold(ctx context.Context, channelID string) int64 {
 	fmt.Println("Getting vote threshold for:", channelID)
-	voteThresholdString, err := h.Repo.GetVoteThreshold(ctx, channelID)
+	voteThresholdString, err := h.Redis.GetVoteThreshold(ctx, channelID)
 	if err != nil {
 		if err.Code == voteErrors.CodeMissingCacheVoteThreshold {
 			fmt.Println("missing vote threshold cache:", err)
 			voteThresholdString, twitchGetConfigErr := h.TwitchWrapper.GetStreamerConfig(channelID)
 			if twitchGetConfigErr != nil {
-				h.Repo.UpdateVoteThresholdForChannel(ctx, channelID, strconv.Itoa(VoteThreshold))
+				h.Redis.UpdateVoteThresholdForChannel(ctx, channelID, strconv.Itoa(VoteThreshold))
 				return VoteThreshold
 			} else {
-				h.Repo.UpdateVoteThresholdForChannel(ctx, channelID, voteThresholdString)
+				h.Redis.UpdateVoteThresholdForChannel(ctx, channelID, voteThresholdString)
 				fmt.Println("retrieved vote threshold:", voteThresholdString)
 				voteThreshold, stringConvErr := strconv.ParseInt(voteThresholdString, 10, 64)
 				if stringConvErr != nil {
@@ -131,7 +131,7 @@ func (h *Vote) getVoteThreshold(ctx context.Context, channelID string) int64 {
 
 func (h *Vote) ListV3(w http.ResponseWriter, r *http.Request) {
 	channelIDParam := chi.URLParam(r, "channelID")
-	res := h.Repo.GetMostVoted(r.Context(), channelIDParam)
+	res := h.Redis.GetMostVoted(r.Context(), channelIDParam)
 	var response struct {
 		ItemID string
 	}
@@ -149,9 +149,9 @@ func (h *Vote) ListV3(w http.ResponseWriter, r *http.Request) {
 
 func (h *Vote) handleThresholdFulfilled(ctx context.Context, channelID string) model.Item {
 	// Get the top votes, clear all votes, reset increment count
-	votedItemID := h.Repo.GetMostVoted(ctx, channelID)
-	votedItem := h.Repo.GetItemByID(ctx, votedItemID)
-	h.Repo.ClearVotesForChannel(ctx, channelID)
-	h.Repo.ClearVoteCountForChannel(ctx, channelID)
+	votedItemID := h.Redis.GetMostVoted(ctx, channelID)
+	votedItem := h.Redis.GetItemByID(ctx, votedItemID)
+	h.Redis.ClearVotesForChannel(ctx, channelID)
+	h.Redis.ClearVoteCountForChannel(ctx, channelID)
 	return votedItem
 }
