@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/ruvice/dotabackseaterbackend/utils/DBSError"
+	"github.com/ruvice/dotabackseaterbackend/utils/dbsError"
 	"golang.org/x/oauth2/clientcredentials"
 	"golang.org/x/oauth2/twitch"
 )
@@ -153,7 +153,7 @@ func (w *TwitchWrapper) SendMessage(twitchMessage TwitchMessage) error {
 	// Check if the request failed
 	if resp.StatusCode == http.StatusTooManyRequests {
 		fmt.Println("Too many requests: ", resp)
-		return DBSError.NewError(DBSError.CodeTwitchMessageTooManyRequests, "Too many requests")
+		return dbsError.NewVoteError("SendMessage", dbsError.CodeTwitchMessageTooManyRequests, "Too many requests", err)
 	}
 
 	if resp.StatusCode != 204 {

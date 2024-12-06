@@ -12,7 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ruvice/dotabackseaterbackend/model"
 	"github.com/ruvice/dotabackseaterbackend/repository/redisRepo"
-	"github.com/ruvice/dotabackseaterbackend/utils/DBSError"
+	"github.com/ruvice/dotabackseaterbackend/utils/dbsError"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
@@ -80,9 +80,9 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 		timeout := h.Redis.GetTwitchMessageAPITimeout(r.Context(), VoteBody.ChannelID)
 		if timeout < 0 {
 			err := h.TwitchWrapper.SendMessage(twitchMessage)
-			if vErr := new(DBSError.VoteError); errors.As(err, &vErr) {
-				if vErr.Code == DBSError.CodeTwitchMessageTooManyRequests {
-					log.Println("Too many requests error:", vErr.Message)
+			if vErr := new(dbsError.VoteError); errors.As(err, &vErr) {
+				if vErr.Code == dbsError.CodeTwitchMessageTooManyRequests {
+					log.Println("Too many requests error: %w", vErr)
 					h.handleVoteMessageTooManyRequests(r.Context(), VoteBody.ChannelID)
 				}
 			}
@@ -101,24 +101,28 @@ func (h *Vote) getVoteThreshold(ctx context.Context, channelID string) int64 {
 	log.Println("Getting vote threshold for:", channelID)
 	voteThresholdString, err := h.Redis.GetVoteThreshold(ctx, channelID)
 	if err != nil {
-		if err.Code == DBSError.CodeMissingCacheVoteThreshold {
-			log.Println("missing vote threshold cache:", err)
-			voteThresholdString, twitchGetConfigErr := h.TwitchWrapper.GetStreamerConfig(channelID)
-			if twitchGetConfigErr != nil {
-				h.Redis.UpdateVoteThresholdForChannel(ctx, channelID, strconv.Itoa(VoteThreshold))
-				return VoteThreshold
-			} else {
-				h.Redis.UpdateVoteThresholdForChannel(ctx, channelID, voteThresholdString)
-				log.Println("retrieved vote threshold:", voteThresholdString)
-				voteThreshold, stringConvErr := strconv.ParseInt(voteThresholdString, 10, 64)
-				if stringConvErr != nil {
-					log.Println("Failed to convert vote threshold to int64")
+		var voteErr *dbsError.VoteError
+		if errors.As(err, &voteErr) {
+			switch voteErr.Code {
+			case dbsError.CodeMissingCacheVoteThreshold:
+				log.Println("missing vote threshold cache:", err)
+				voteThresholdString, twitchGetConfigErr := h.TwitchWrapper.GetStreamerConfig(channelID)
+				if twitchGetConfigErr != nil {
+					h.Redis.UpdateVoteThresholdForChannel(ctx, channelID, strconv.Itoa(VoteThreshold))
 					return VoteThreshold
+				} else {
+					h.Redis.UpdateVoteThresholdForChannel(ctx, channelID, voteThresholdString)
+					log.Println("retrieved vote threshold:", voteThresholdString)
+					voteThreshold, stringConvErr := strconv.ParseInt(voteThresholdString, 10, 64)
+					if stringConvErr != nil {
+						log.Println("Failed to convert vote threshold to int64")
+						return VoteThreshold
+					}
+					return voteThreshold
 				}
-				return voteThreshold
+			default:
+				return VoteThreshold
 			}
-		} else {
-			return VoteThreshold
 		}
 	}
 	log.Println("retrieved vote threshold:", voteThresholdString)
