@@ -20,6 +20,8 @@ jobs:
           echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> .env
           echo "REDIS_ADDR=${{ secrets.REDIS_ADDR }}" >> .env
           echo "SERVER_PORT=${{ secrets.SERVER_PORT }}" >> .env
+          echo "SSL_CERT_PATH=${{ secrets.SSL_CERT_PATH }}" >> .env
+          echo "SSL_KEY_PATH=${{ secrets.SSL_KEY_PATH }}" >> .env
 
       - name: Set up SSH with .pem file
         run: |
@@ -35,7 +37,7 @@ jobs:
 
       - name: Check Disk Space on EC2
         run: |
-          ssh -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} "df -h"
+          ssh -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no ruvice@${{ secrets.EC2_HOST }} "df -h"
 
       - name: Check File Size and Network Status
         run: |
@@ -43,9 +45,9 @@ jobs:
       
       - name: Transfer Docker Image and Files to EC2
         run: |
-          scp -v -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no dotabackseaterbackend.tar ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/dotabackseaterbackend.tar
-          scp -v -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no docker-compose.yml ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/docker-compose.yml
-          scp -v -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no .env ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/.env
+          scp -v -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no dotabackseaterbackend.tar ruvice@${{ secrets.EC2_HOST }}:/home/ubuntu/dotabackseaterbackend.tar
+          scp -v -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no docker-compose.yml ruvice@${{ secrets.EC2_HOST }}:/home/ubuntu/docker-compose.yml
+          scp -v -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no .env ruvice@${{ secrets.EC2_HOST }}:/home/ubuntu/.env
 
   deploy:
     needs: build
@@ -60,9 +62,11 @@ jobs:
 
       - name: Deploy Application Using Docker Compose
         run: |
-          ssh -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+          ssh -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no ruvice@${{ secrets.EC2_HOST }} << 'EOF'
           cd /home/ubuntu
+          docker rmi -f dotabackseaterbackend || true
           docker load -i dotabackseaterbackend.tar
           docker-compose down || true
           docker-compose up -d
+          docker image prune
           EOF

@@ -10,7 +10,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/ruvice/dotabackseaterbackend/model"
-	"github.com/ruvice/dotabackseaterbackend/utils/errors"
+	"github.com/ruvice/dotabackseaterbackend/utils/voteErrors"
 )
 
 type RedisRepo struct {
@@ -21,6 +21,7 @@ const (
 	VoteTTL          = 3600
 	VoteRelationTTL  = 10
 	VoteThresholdTTL = 604800 // 1 week
+	APIBackoffTTL    = 60
 )
 
 func (r *RedisRepo) Insert(ctx context.Context, vote model.Vote) error {
@@ -69,14 +70,14 @@ func (r *RedisRepo) AddVote(ctx context.Context, channelID string, itemID string
 	fmt.Printf("Vote added for item %d by Twitch user %s in channel %s\n", itemID, twitchID, channelID)
 }
 
-func (r *RedisRepo) AddVoteRelation(ctx context.Context, channelID string, twitchID string) *errors.VoteError {
+func (r *RedisRepo) AddVoteRelation(ctx context.Context, channelID string, twitchID string) *voteErrors.VoteError {
 	// Set the key with a 30-second expiration
 	key := channelID + ":" + twitchID
 	value := time.Now()
 	err := r.Client.Set(ctx, key, value, VoteRelationTTL*time.Second).Err()
 	if err != nil {
 		fmt.Println("failed to write to Redis with expiry: %w", err)
-		voteError := errors.NewError(errors.CodeVoteRelationCreationError, "Unable to add Vote Relation")
+		voteError := voteErrors.NewError(voteErrors.CodeVoteRelationCreationError, "Unable to add Vote Relation")
 		return voteError
 	}
 
@@ -176,7 +177,7 @@ func (r *RedisRepo) UpdateVoteThresholdForChannel(ctx context.Context, channelID
 	err := r.Client.Set(ctx, key, newThreshold, VoteThresholdTTL*time.Second).Err()
 	if err != nil {
 		fmt.Println("failed to write to Redis with expiry: %w", err)
-		voteError := errors.NewError(errors.CodeVoteRelationCreationError, "Unable to add Vote Relation")
+		voteError := voteErrors.NewError(voteErrors.CodeVoteRelationCreationError, "Unable to add Vote Relation")
 		return voteError
 	}
 
@@ -184,17 +185,16 @@ func (r *RedisRepo) UpdateVoteThresholdForChannel(ctx context.Context, channelID
 	return nil
 }
 
-func (r *RedisRepo) GetVoteThreshold(ctx context.Context, channelID string) (string, *errors.VoteError) {
+func (r *RedisRepo) GetVoteThreshold(ctx context.Context, channelID string) (string, *voteErrors.VoteError) {
 	key := "voteThreshold:" + channelID
 	fmt.Println("In Redis GetVoteThreshold", key)
 	voteThreshold, err := r.Client.Get(ctx, key).Result()
-	fmt.Println("In Redis GetVoteThreshold err:", err)
 	if err == redis.Nil {
 		fmt.Printf("Could not find key: %v\n", err)
-		return "", errors.NewError(errors.CodeMissingCacheVoteThreshold, "Could not find vote threshold cache")
+		return "", voteErrors.NewError(voteErrors.CodeMissingCacheVoteThreshold, "Could not find vote threshold cache")
 	} else if err != nil {
 		fmt.Printf("Error getting key: %v\n", err)
-		return "", errors.NewError(errors.CodeUnknown, "Error getting key")
+		return "", voteErrors.NewError(voteErrors.CodeUnknown, "Error getting key")
 	}
 	return voteThreshold, nil
 }
@@ -232,12 +232,12 @@ func (r *RedisRepo) writeItemMapToCache(ctx context.Context, itemMap model.ItemM
 	return
 }
 
-func (r *RedisRepo) GetItemMapFromCache(ctx context.Context) (string, *errors.VoteError) {
+func (r *RedisRepo) GetItemMapFromCache(ctx context.Context) (string, *voteErrors.VoteError) {
 	// Get the JSON string from Redis
 	jsonData, err := r.Client.Get(ctx, "itemMapCache").Result()
 	if err != nil {
 		fmt.Println("Error getting itemMapCache: ", err)
-		voteError := errors.NewError(errors.CodeItemGetRedisError, "Failed to get Item Map for client from Redis")
+		voteError := voteErrors.NewError(voteErrors.CodeItemGetRedisError, "Failed to get Item Map for client from Redis")
 		return "", voteError
 	}
 
@@ -329,4 +329,41 @@ func (r *RedisRepo) GetItemByID(ctx context.Context, itemID string) model.Item {
 	}
 
 	return item
+}
+
+// Handling too many requests
+func (r *RedisRepo) SetTwitchMessageAPITimeout(ctx context.Context, channelID string) *voteErrors.VoteError {
+	// Set the key with a 60-second expiration
+	key := "timeout:" + channelID
+	value := time.Now()
+	err := r.Client.Set(ctx, key, value, APIBackoffTTL*time.Second).Err()
+	if err != nil {
+		fmt.Println("failed to write to Redis with expiry: %w", err)
+		voteError := voteErrors.NewError(voteErrors.CodeVoteRelationCreationError, "Unable to add Vote Relation")
+		return voteError
+	}
+
+	fmt.Printf("Successfully set key '%s' with value '%s' and 30-second expiry\n", key, value)
+	return nil
+}
+
+func (r *RedisRepo) GetTwitchMessageAPITimeout(ctx context.Context, channelID string) int64 {
+	// Set the key with a 60-second expiration
+	key := "timeout:" + channelID
+	ttl, err := r.Client.TTL(ctx, key).Result()
+	if err != nil {
+		fmt.Println("Unable to get TTL for vote relation: ", err)
+		return 0
+	}
+	// Check the TTL value
+	if ttl == -1 {
+		fmt.Printf("Key '%s' does not have an expiry set\n", key)
+		return -1
+	} else if ttl == -2 {
+		fmt.Printf("Key '%s' does not exist\n", key)
+		return -2
+	}
+
+	// Return the TTL in seconds
+	return int64(ttl.Seconds())
 }

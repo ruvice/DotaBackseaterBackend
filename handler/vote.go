@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -10,7 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ruvice/dotabackseaterbackend/model"
 	"github.com/ruvice/dotabackseaterbackend/repository"
-	"github.com/ruvice/dotabackseaterbackend/utils/errors"
+	"github.com/ruvice/dotabackseaterbackend/utils/voteErrors"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
@@ -45,8 +46,10 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 			fmt.Println(voteError)
 		}
 	} else {
+		w.Header().Set("Access-Control-Expose-Headers", "Retry-After") // Expose Retry-After header
 		// Set the `Retry-After` header to indicate the backoff period in seconds
 		w.Header().Set("Retry-After", fmt.Sprintf("%d", int(ttl)))
+
 		w.WriteHeader(http.StatusTooManyRequests)
 		// Optionally, include a message in the response body
 		response := fmt.Sprintf("Please retry after %d seconds", int(ttl))
@@ -65,7 +68,7 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 	// Enough votes accumulated
 	voteThreshold := h.getVoteThreshold(r.Context(), VoteBody.ChannelID)
 	fmt.Println("voteThreshold:", voteThreshold)
-	if voteCount > voteThreshold {
+	if voteCount >= voteThreshold {
 		votedItem := h.handleThresholdFulfilled(r.Context(), VoteBody.ChannelID)
 		message := fmt.Sprintf("Chat thinks you should buy %s!", votedItem.Name)
 
@@ -73,17 +76,31 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 			Message:   message,
 			ChannelID: VoteBody.ChannelID,
 		}
-		h.TwitchWrapper.SendMessage(twitchMessage)
+		timeout := h.Repo.GetTwitchMessageAPITimeout(r.Context(), VoteBody.ChannelID)
+		if timeout < 0 {
+			err := h.TwitchWrapper.SendMessage(twitchMessage)
+			if vErr := new(voteErrors.VoteError); errors.As(err, &vErr) {
+				if vErr.Code == voteErrors.CodeTwitchMessageTooManyRequests {
+					fmt.Println("Too many requests error:", vErr.Message)
+					h.handleVoteMessageTooManyRequests(r.Context(), VoteBody.ChannelID)
+				}
+			}
+		}
 	}
 
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (h *Vote) handleVoteMessageTooManyRequests(ctx context.Context, channelID string) {
+	fmt.Println("Handling backoff")
+	h.Repo.SetTwitchMessageAPITimeout(ctx, channelID)
 }
 
 func (h *Vote) getVoteThreshold(ctx context.Context, channelID string) int64 {
 	fmt.Println("Getting vote threshold for:", channelID)
 	voteThresholdString, err := h.Repo.GetVoteThreshold(ctx, channelID)
 	if err != nil {
-		if err.Code == errors.CodeMissingCacheVoteThreshold {
+		if err.Code == voteErrors.CodeMissingCacheVoteThreshold {
 			fmt.Println("missing vote threshold cache:", err)
 			voteThresholdString, twitchGetConfigErr := h.TwitchWrapper.GetStreamerConfig(channelID)
 			if twitchGetConfigErr != nil {

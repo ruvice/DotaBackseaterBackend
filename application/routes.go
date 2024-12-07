@@ -16,7 +16,7 @@ func (a *App) loadRoutes() {
 	router.Use(middleware.Logger)
 	// CORS middleware configuration
 	corsOptions := cors.Options{
-		AllowedOrigins:   []string{"https://localhost:8080"}, // Frontend origin
+		AllowedOrigins:   []string{"https://localhost:8080", "https://" + a.config.TwitchConfig.ClientID + ".ext-twitch.tv"}, // Frontend origin
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true, // Allow credentials if needed
@@ -27,7 +27,7 @@ func (a *App) loadRoutes() {
 	router.Use(cors.Handler(corsOptions))
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "Hi Rix!")
 	})
 
 	router.Get("/hi", func(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +80,7 @@ func (a *App) loadStreamerConfigRoutes(router chi.Router) {
 			Client: a.rdb,
 		},
 	}
+	router.Post("/{channelID}", twitchHandler.RefreshStreamerConfig)
 	router.Get("/{channelID}", twitchHandler.GetStreamerConfig)
 }
 
