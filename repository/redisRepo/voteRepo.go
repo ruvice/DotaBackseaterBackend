@@ -49,7 +49,7 @@ func (r *RedisRepo) AddVote(ctx context.Context, channelID string, itemID string
 	r.Client.HIncrBy(ctx, key, itemID, 1)
 	r.Client.Expire(ctx, key, VoteTTL*time.Second)
 
-	fmt.Printf("Vote added for item %d by Twitch user %s in channel %s\n", itemID, twitchID, channelID)
+	log.Printf("Vote added for item %s by Twitch user %s in channel %s\n", itemID, twitchID, channelID)
 }
 
 // Gets the most frequent item_id
@@ -69,7 +69,7 @@ func (r *RedisRepo) GetMostVoted(ctx context.Context, channelID string) string {
 	for item, countStr := range votes {
 		count, err := strconv.ParseInt(countStr, 10, 64)
 		if err != nil {
-			fmt.Printf("Skipping invalid vote count for item %s: %v\n", item, err)
+			log.Printf("Skipping invalid vote count for item %s: %v\n", item, err)
 			continue
 		}
 		if count > maxVotes {
@@ -95,7 +95,7 @@ func (r *RedisRepo) IncrementForChannel(ctx context.Context, channelID string) (
 func (r *RedisRepo) ClearVoteCountForChannel(ctx context.Context, channelID string) {
 	_, err := r.Client.Del(ctx, channelID).Result()
 	if err != nil {
-		fmt.Printf("Failed to delete vote counts for channel %s: %v\n", channelID, err)
+		log.Printf("Failed to delete vote counts for channel %s: %v\n", channelID, err)
 		return
 	}
 }
@@ -110,9 +110,9 @@ func (r *RedisRepo) ClearVotesForChannel(ctx context.Context, channelID string) 
 
 	// Check if any keys were actually deleted
 	if result == 0 {
-		fmt.Printf("No votes found for channel %s\n", channelID)
+		log.Printf("No votes found for channel %s\n", channelID)
 	} else {
-		fmt.Printf("Votes cleared for channel %s\n", channelID)
+		log.Printf("Votes cleared for channel %s\n", channelID)
 	}
 
 	return nil

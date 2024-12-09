@@ -49,6 +49,7 @@ func (h *TwitchHandler) SendTwitchFEMessage(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+
 	err := h.TwitchWrapper.SendFEMessage(body.ChannelID, body.Message, body.EBSToken, body.ClientID)
 	if err != nil {
 		log.Println("Error with send Twitch Message API: ", err)
