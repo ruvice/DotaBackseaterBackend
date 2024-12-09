@@ -2,7 +2,6 @@ package redisRepo
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 
@@ -20,7 +19,7 @@ func (r *RedisRepo) AddVoteRelation(ctx context.Context, channelID string, twitc
 		return voteError
 	}
 
-	fmt.Printf("Successfully set key '%s' with value '%s' and 30-second expiry\n", key, value)
+	log.Printf("Successfully set key '%s' with value '%s' and 30-second expiry\n", key, value)
 	return nil
 }
 
@@ -34,10 +33,10 @@ func (r *RedisRepo) GetVoteRelationTTL(ctx context.Context, channelID string, tw
 	}
 	// Check the TTL value
 	if ttl == -1 {
-		fmt.Printf("Key '%s' does not have an expiry set\n", key)
+		log.Printf("Key '%s' does not have an expiry set\n", key)
 		return -1
 	} else if ttl == -2 {
-		fmt.Printf("Key '%s' does not exist\n", key)
+		log.Printf("Key '%s' does not exist\n", key)
 		return -2
 	}
 
@@ -57,7 +56,7 @@ func (r *RedisRepo) SetTwitchMessageAPITimeout(ctx context.Context, channelID st
 		return voteError
 	}
 
-	fmt.Printf("Successfully set key '%s' with value '%s' and 30-second expiry\n", key, value)
+	log.Printf("Successfully set key '%s' with value '%s' and 30-second expiry\n", key, value)
 	return nil
 }
 
@@ -71,10 +70,10 @@ func (r *RedisRepo) GetTwitchMessageAPITimeout(ctx context.Context, channelID st
 	}
 	// Check the TTL value
 	if ttl == -1 {
-		fmt.Printf("Key '%s' does not have an expiry set\n", key)
+		log.Printf("Key '%s' does not have an expiry set\n", key)
 		return -1
 	} else if ttl == -2 {
-		fmt.Printf("Key '%s' does not exist\n", key)
+		log.Printf("Key '%s' does not exist\n", key)
 		return -2
 	}
 

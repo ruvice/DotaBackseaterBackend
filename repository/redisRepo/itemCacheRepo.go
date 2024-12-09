@@ -100,7 +100,7 @@ func (r *RedisRepo) clearPreviousItemCache(ctx context.Context) error {
 		if err := r.Client.Del(ctx, keysToDelete...).Err(); err != nil {
 			return fmt.Errorf("error deleting keys: %w", err)
 		}
-		fmt.Printf("Deleted %d keys with prefix '%s'\n", len(keysToDelete), prefix)
+		log.Printf("Deleted %d keys with prefix '%s'\n", len(keysToDelete), prefix)
 	} else {
 		log.Println("No keys found with the specified prefix")
 	}

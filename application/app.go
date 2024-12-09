@@ -39,7 +39,7 @@ func New(ctx context.Context, config config.Config) *App {
 		Client: mongoClient,
 	}
 	if err != nil {
-		fmt.Println("Failed to establish connection with MongoDB, ", err)
+		log.Println("Failed to establish connection with MongoDB, ", err)
 	}
 	app := &App{
 		config:        config,
@@ -65,7 +65,7 @@ func (a *App) Start(ctx context.Context) error {
 	server := a.getHttpServer()
 	a.PerformInitTasks(ctx)
 
-	fmt.Printf("Starting server on: %d", a.config.ServerPort)
+	log.Printf("Starting server on: %d", a.config.ServerPort)
 
 	// Making a channel, basically a type that allows communication between goroutines
 	ch := make(chan error, 1)
