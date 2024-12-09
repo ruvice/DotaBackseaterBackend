@@ -3,9 +3,10 @@ package repository
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/ruvice/dotabackseaterbackend/model"
-	"github.com/ruvice/dotabackseaterbackend/utils/voteErrors"
+	"github.com/ruvice/dotabackseaterbackend/utils/dbsError"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -21,17 +22,17 @@ type VoteDocument struct {
 }
 
 func (r *MongoDBRepo) Insert(ctx context.Context, channelID string) error {
-	fmt.Println("Inserting to Mongo")
+	log.Println("Inserting to Mongo")
 	err := r.Client.Ping(ctx, readpref.Primary())
 	if err != nil {
-		fmt.Println("Problem reading MongoDB, ", err)
+		log.Println("Problem reading MongoDB, ", err)
 	}
 
 	databases, err := r.Client.ListDatabaseNames(ctx, bson.M{})
 	if err != nil {
-		fmt.Println("Problem reading database names, ", err)
+		log.Println("Problem reading database names, ", err)
 	}
-	fmt.Println(databases)
+	log.Println(databases)
 
 	twitchExtensionDatabase := r.Client.Database("twitchExtensionDatabase")
 	channelCollection := twitchExtensionDatabase.Collection("channel")
@@ -40,10 +41,10 @@ func (r *MongoDBRepo) Insert(ctx context.Context, channelID string) error {
 		{Key: "votes", Value: bson.M{}},
 	})
 	if err != nil {
-		fmt.Println("Problem creating document, ", err)
+		log.Println("Problem creating document, ", err)
 		return fmt.Errorf("problem creating document:  %w", err)
 	}
-	fmt.Println(channelResult.InsertedID)
+	log.Println(channelResult.InsertedID)
 	return nil
 }
 
@@ -57,24 +58,24 @@ func (r *MongoDBRepo) FindDocument(ctx context.Context, channelID string) error 
 	if err != nil {
 		return r.handleFindError(ctx, err, channelID)
 	}
-	fmt.Println("Found document:", result)
+	log.Println("Found document:", result)
 	return nil
 }
 
 func (r *MongoDBRepo) handleFindError(ctx context.Context, err error, channelID string) error {
-	fmt.Println("Failed to find document in FindDocument:", err)
+	log.Println("Failed to find document in FindDocument:", err)
 	if err == mongo.ErrNoDocuments {
-		fmt.Println("Failed to find document in FindDocument, proceeding with Insert:", err)
+		log.Println("Failed to find document in FindDocument, proceeding with Insert:", err)
 		insertErr := r.Insert(ctx, channelID)
 		if insertErr != nil {
-			fmt.Println("Failed to find document in FindDocument, failed on Insert:", err)
+			log.Println("Failed to find document in FindDocument, failed on Insert:", err)
 			return insertErr
 		}
 	}
 	return nil
 }
 
-func (r *MongoDBRepo) GetTopVote(ctx context.Context, channelID string) (string, *voteErrors.VoteError) {
+func (r *MongoDBRepo) GetTopVote(ctx context.Context, channelID string) (string, error) {
 	twitchExtensionDatabase := r.Client.Database("twitchExtensionDatabase")
 	channelCollection := twitchExtensionDatabase.Collection("channel")
 
@@ -82,11 +83,11 @@ func (r *MongoDBRepo) GetTopVote(ctx context.Context, channelID string) (string,
 	var result VoteDocument
 	err := channelCollection.FindOne(ctx, filter).Decode(&result)
 	if err != nil {
-		fmt.Println("FindOne failed:", err)
-		voteError := voteErrors.NewError(voteErrors.CodeVotedItemNotFound, "Failed to get Voted Item from Mongo")
+		log.Println("FindOne failed:", err)
+		voteError := dbsError.NewVoteError("GetTopVote", dbsError.CodeVotedItemNotFound, "Failed to get Voted Item from Mongo", err)
 		return "", voteError
 	}
-	fmt.Println("Found document:", result)
+	log.Println("Found document:", result)
 	var votedItemID string
 	var highestVoteCount int64
 	for itemID, voteCount := range result.Votes {
@@ -113,8 +114,8 @@ func FindHighestVote(m map[int]int) (int, int) {
 	return maxKey, maxValue
 }
 
-func (r *MongoDBRepo) UpdateVote(ctx context.Context, channelID string, itemID string) *voteErrors.VoteError {
-	fmt.Println("Updating Votes in MongoDB")
+func (r *MongoDBRepo) UpdateVote(ctx context.Context, channelID string, itemID string) error {
+	log.Println("Updating Votes in MongoDB")
 	twitchExtensionDatabase := r.Client.Database("twitchExtensionDatabase")
 	channelCollection := twitchExtensionDatabase.Collection("channel")
 	err := r.FindDocument(ctx, channelID)
@@ -129,13 +130,13 @@ func (r *MongoDBRepo) UpdateVote(ctx context.Context, channelID string, itemID s
 	if err != nil {
 		return r.handleUpdateError(err)
 	}
-	fmt.Printf("Matched %d document(s) and modified %d document(s)\n", result.MatchedCount, result.ModifiedCount)
+	log.Printf("Matched %d document(s) and modified %d document(s)\n", result.MatchedCount, result.ModifiedCount)
 	return nil
 }
 
-func (r *MongoDBRepo) handleUpdateError(err error) *voteErrors.VoteError {
-	fmt.Println("Failed in UpdateVote: ", err)
-	voteError := voteErrors.NewError(voteErrors.CodeUpdateVoteError, "Failed in UpdateVote")
+func (r *MongoDBRepo) handleUpdateError(err error) error {
+	log.Println("Failed in UpdateVote: ", err)
+	voteError := dbsError.NewVoteError("UpdateVote", dbsError.CodeUpdateVoteError, "failed in UpdateVote", err)
 	return voteError
 }
 
@@ -147,9 +148,9 @@ func (r *MongoDBRepo) ResetVotes(ctx context.Context, channelID string) {
 
 	result, err := channelCollection.UpdateOne(ctx, filter, update)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
-	fmt.Printf("Matched %d document(s) and modified %d document(s)\n", result.MatchedCount, result.ModifiedCount)
+	log.Printf("Matched %d document(s) and modified %d document(s)\n", result.MatchedCount, result.ModifiedCount)
 }
 
 // Handling items
@@ -158,7 +159,7 @@ type ItemDetail struct {
 	Cost int32  `bson:"cost" json:"cost"`
 }
 
-func (r *MongoDBRepo) RefreshItems(ctx context.Context) (model.ItemMap, *voteErrors.VoteError) {
+func (r *MongoDBRepo) RefreshItems(ctx context.Context) (model.ItemMap, error) {
 	twitchExtensionDatabase := r.Client.Database("itemDatabase")
 	channelCollection := twitchExtensionDatabase.Collection("itemsValid")
 
@@ -166,12 +167,12 @@ func (r *MongoDBRepo) RefreshItems(ctx context.Context) (model.ItemMap, *voteErr
 	var result bson.M
 	err := channelCollection.FindOne(ctx, filter).Decode(&result)
 	if err != nil {
-		fmt.Println("Failed to find docucment: ", err)
-		voteError := voteErrors.NewError(voteErrors.CodeItemRefreshError, "Error Refreshing Items")
+		log.Println("Failed to find docucment: ", err)
+		voteError := dbsError.NewVoteError("RefreshItems", dbsError.CodeItemRefreshError, "error refreshing items", err)
 		return model.ItemMap{}, voteError
 	}
 
-	fmt.Println("Found document:", result)
+	log.Println("Found document:", result)
 	// Create a map to store the parsed data
 	itemMap := make(model.ItemMap)
 
@@ -182,16 +183,11 @@ func (r *MongoDBRepo) RefreshItems(ctx context.Context) (model.ItemMap, *voteErr
 			continue
 		}
 		itemKey := key
-		if err != nil {
-			fmt.Println("Invalid item_id key:", key)
-			voteError := voteErrors.NewError(voteErrors.CodeItemRefreshError, "Error Refreshing Items")
-			return model.ItemMap{}, voteError
-		}
 		// Assert that the value is a nested object (bson.M)
 		itemData, ok := value.(bson.M)
 		if !ok {
-			fmt.Println("Invalid value type for key:", key)
-			voteError := voteErrors.NewError(voteErrors.CodeItemRefreshError, "Error Refreshing Items")
+			log.Println("Invalid value type for key:", key)
+			voteError := dbsError.NewVoteError("RefreshItems", dbsError.CodeItemRefreshError, "error refreshing items", err)
 			return model.ItemMap{}, voteError
 		}
 
@@ -219,5 +215,5 @@ func (r *MongoDBRepo) RefreshItems(ctx context.Context) (model.ItemMap, *voteErr
 }
 
 func (r *MongoDBRepo) GetItems(ctx context.Context) {
-	fmt.Println("Getting items from Mongo")
+	log.Println("Getting items from Mongo")
 }

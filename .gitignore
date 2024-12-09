@@ -4,3 +4,4 @@ test.py
 twitch curls.txt
 imageScript
 .env
+curlTests.py
