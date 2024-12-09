@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ruvice/dotabackseaterbackend/model"
-	"github.com/ruvice/dotabackseaterbackend/repository"
-	"github.com/ruvice/dotabackseaterbackend/utils/voteErrors"
+	"github.com/ruvice/dotabackseaterbackend/repository/redisRepo"
+	"github.com/ruvice/dotabackseaterbackend/utils/dbsError"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
@@ -20,7 +21,7 @@ const (
 )
 
 type Vote struct {
-	Repo          *repository.RedisRepo
+	Redis         *redisRepo.RedisRepo
 	TwitchWrapper *wrapper.TwitchWrapper
 }
 
@@ -31,19 +32,19 @@ var VoteBody struct {
 }
 
 func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("New vote")
+	log.Println("New vote")
 
 	if err := json.NewDecoder(r.Body).Decode(&VoteBody); err != nil {
-		fmt.Println("body fked up")
+		log.Println("body fked up")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	ttl := h.Repo.GetVoteRelationTTL(r.Context(), VoteBody.ChannelID, VoteBody.TwitchID)
+	ttl := h.Redis.GetVoteRelationTTL(r.Context(), VoteBody.ChannelID, VoteBody.TwitchID)
 	if ttl <= 0 {
-		voteError := h.Repo.AddVoteRelation(r.Context(), VoteBody.ChannelID, VoteBody.TwitchID)
+		voteError := h.Redis.AddVoteRelation(r.Context(), VoteBody.ChannelID, VoteBody.TwitchID)
 		if voteError != nil {
-			fmt.Println(voteError)
+			log.Println(voteError)
 		}
 	} else {
 		w.Header().Set("Access-Control-Expose-Headers", "Retry-After") // Expose Retry-After header
@@ -57,17 +58,17 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	voteCount, incrementErr := h.Repo.IncrementForChannel(r.Context(), VoteBody.ChannelID)
+	voteCount, incrementErr := h.Redis.IncrementForChannel(r.Context(), VoteBody.ChannelID)
 	if incrementErr != nil {
-		fmt.Println("Failed to increment count in Redis: ", incrementErr)
+		log.Println("Failed to increment count in Redis: ", incrementErr)
 		// w.WriteHeader(http.StatusInternalServerError)
 		// return
 	}
-	h.Repo.AddVote(r.Context(), VoteBody.ChannelID, VoteBody.ItemID, VoteBody.TwitchID)
+	h.Redis.AddVote(r.Context(), VoteBody.ChannelID, VoteBody.ItemID, VoteBody.TwitchID)
 
 	// Enough votes accumulated
 	voteThreshold := h.getVoteThreshold(r.Context(), VoteBody.ChannelID)
-	fmt.Println("voteThreshold:", voteThreshold)
+	log.Println("voteThreshold:", voteThreshold)
 	if voteCount >= voteThreshold {
 		votedItem := h.handleThresholdFulfilled(r.Context(), VoteBody.ChannelID)
 		message := fmt.Sprintf("Chat thinks you should buy %s!", votedItem.Name)
@@ -76,12 +77,12 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 			Message:   message,
 			ChannelID: VoteBody.ChannelID,
 		}
-		timeout := h.Repo.GetTwitchMessageAPITimeout(r.Context(), VoteBody.ChannelID)
+		timeout := h.Redis.GetTwitchMessageAPITimeout(r.Context(), VoteBody.ChannelID)
 		if timeout < 0 {
 			err := h.TwitchWrapper.SendMessage(twitchMessage)
-			if vErr := new(voteErrors.VoteError); errors.As(err, &vErr) {
-				if vErr.Code == voteErrors.CodeTwitchMessageTooManyRequests {
-					fmt.Println("Too many requests error:", vErr.Message)
+			if vErr := new(dbsError.VoteError); errors.As(err, &vErr) {
+				if vErr.Code == dbsError.CodeTwitchMessageTooManyRequests {
+					log.Println("Too many requests error: %w", vErr)
 					h.handleVoteMessageTooManyRequests(r.Context(), VoteBody.ChannelID)
 				}
 			}
@@ -92,38 +93,42 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Vote) handleVoteMessageTooManyRequests(ctx context.Context, channelID string) {
-	fmt.Println("Handling backoff")
-	h.Repo.SetTwitchMessageAPITimeout(ctx, channelID)
+	log.Println("Handling backoff")
+	h.Redis.SetTwitchMessageAPITimeout(ctx, channelID)
 }
 
 func (h *Vote) getVoteThreshold(ctx context.Context, channelID string) int64 {
-	fmt.Println("Getting vote threshold for:", channelID)
-	voteThresholdString, err := h.Repo.GetVoteThreshold(ctx, channelID)
+	log.Println("Getting vote threshold for:", channelID)
+	voteThresholdString, err := h.Redis.GetVoteThreshold(ctx, channelID)
 	if err != nil {
-		if err.Code == voteErrors.CodeMissingCacheVoteThreshold {
-			fmt.Println("missing vote threshold cache:", err)
-			voteThresholdString, twitchGetConfigErr := h.TwitchWrapper.GetStreamerConfig(channelID)
-			if twitchGetConfigErr != nil {
-				h.Repo.UpdateVoteThresholdForChannel(ctx, channelID, strconv.Itoa(VoteThreshold))
-				return VoteThreshold
-			} else {
-				h.Repo.UpdateVoteThresholdForChannel(ctx, channelID, voteThresholdString)
-				fmt.Println("retrieved vote threshold:", voteThresholdString)
-				voteThreshold, stringConvErr := strconv.ParseInt(voteThresholdString, 10, 64)
-				if stringConvErr != nil {
-					fmt.Println("Failed to convert vote threshold to int64")
+		var voteErr *dbsError.VoteError
+		if errors.As(err, &voteErr) {
+			switch voteErr.Code {
+			case dbsError.CodeMissingCacheVoteThreshold:
+				log.Println("missing vote threshold cache:", err)
+				voteThresholdString, twitchGetConfigErr := h.TwitchWrapper.GetStreamerConfig(channelID)
+				if twitchGetConfigErr != nil {
+					h.Redis.UpdateVoteThresholdForChannel(ctx, channelID, strconv.Itoa(VoteThreshold))
 					return VoteThreshold
+				} else {
+					h.Redis.UpdateVoteThresholdForChannel(ctx, channelID, voteThresholdString)
+					log.Println("retrieved vote threshold:", voteThresholdString)
+					voteThreshold, stringConvErr := strconv.ParseInt(voteThresholdString, 10, 64)
+					if stringConvErr != nil {
+						log.Println("Failed to convert vote threshold to int64")
+						return VoteThreshold
+					}
+					return voteThreshold
 				}
-				return voteThreshold
+			default:
+				return VoteThreshold
 			}
-		} else {
-			return VoteThreshold
 		}
 	}
-	fmt.Println("retrieved vote threshold:", voteThresholdString)
+	log.Println("retrieved vote threshold:", voteThresholdString)
 	voteThreshold, stringConvErr := strconv.ParseInt(voteThresholdString, 10, 64)
 	if stringConvErr != nil {
-		fmt.Println("Failed to convert vote threshold to int64")
+		log.Println("Failed to convert vote threshold to int64")
 		return VoteThreshold
 	}
 	return voteThreshold
@@ -131,7 +136,7 @@ func (h *Vote) getVoteThreshold(ctx context.Context, channelID string) int64 {
 
 func (h *Vote) ListV3(w http.ResponseWriter, r *http.Request) {
 	channelIDParam := chi.URLParam(r, "channelID")
-	res := h.Repo.GetMostVoted(r.Context(), channelIDParam)
+	res := h.Redis.GetMostVoted(r.Context(), channelIDParam)
 	var response struct {
 		ItemID string
 	}
@@ -139,7 +144,7 @@ func (h *Vote) ListV3(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(response)
 	if err != nil {
-		fmt.Println("failed to marshal:", err)
+		log.Println("failed to marshal:", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -149,9 +154,9 @@ func (h *Vote) ListV3(w http.ResponseWriter, r *http.Request) {
 
 func (h *Vote) handleThresholdFulfilled(ctx context.Context, channelID string) model.Item {
 	// Get the top votes, clear all votes, reset increment count
-	votedItemID := h.Repo.GetMostVoted(ctx, channelID)
-	votedItem := h.Repo.GetItemByID(ctx, votedItemID)
-	h.Repo.ClearVotesForChannel(ctx, channelID)
-	h.Repo.ClearVoteCountForChannel(ctx, channelID)
+	votedItemID := h.Redis.GetMostVoted(ctx, channelID)
+	votedItem := h.Redis.GetItemByID(ctx, votedItemID)
+	h.Redis.ClearVotesForChannel(ctx, channelID)
+	h.Redis.ClearVoteCountForChannel(ctx, channelID)
 	return votedItem
 }

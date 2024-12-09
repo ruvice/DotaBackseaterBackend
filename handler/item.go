@@ -1,22 +1,23 @@
 package handler
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/ruvice/dotabackseaterbackend/repository"
+	"github.com/ruvice/dotabackseaterbackend/repository/redisRepo"
 )
 
 type ItemHandler struct {
-	DB   *repository.MongoDBRepo
-	Repo *repository.RedisRepo
+	DB    *repository.MongoDBRepo
+	Redis *redisRepo.RedisRepo
 }
 
 func (h *ItemHandler) GetItems(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Get Items")
-	itemJsonString, err := h.Repo.GetItemMapFromCache(r.Context())
+	log.Println("Get Items")
+	itemJsonString, err := h.Redis.GetItemMapFromCache(r.Context())
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -29,13 +30,13 @@ func (h *ItemHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ItemHandler) RefreshItems(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Refreshing Items")
+	log.Println("Refreshing Items")
 	itemMap, err := h.DB.RefreshItems(r.Context())
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	h.Repo.CacheItems(r.Context(), itemMap)
+	h.Redis.CacheItems(r.Context(), itemMap)
 	w.WriteHeader(http.StatusOK)
 }
