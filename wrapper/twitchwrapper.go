@@ -38,6 +38,7 @@ func (w *TwitchWrapper) SendMessage(twitchMessage TwitchMessage) error {
 		"Authorization": "Bearer " + jwtToken,
 		"Content-Type":  "application/json",
 	}
+	log.Println("DEBUG: ", headers, payload)
 
 	resp, err := w.sendRequest("POST", "https://api.twitch.tv/helix/extensions/chat", payload, headers)
 	if err != nil {
