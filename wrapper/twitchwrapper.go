@@ -133,6 +133,7 @@ func (w *TwitchWrapper) GetStreamerConfig(channelID string) (string, error) {
 	for _, content := range response.Data {
 		if content.Segment == "broadcaster" {
 			trimmed := strings.Trim(content.Content, `"`)
+			log.Printf("Streamer set voteThreshold as: %s", trimmed)
 			return trimmed, nil
 		}
 	}

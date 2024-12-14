@@ -14,6 +14,7 @@ jobs:
       - name: Create .env file
         run: |
           echo "TWITCH_EXTENSION_SECRET=${{ secrets.TWITCH_EXTENSION_SECRET }}" >> .env
+          echo "TWITCH_EXTENSION_VERSION=${{ secrets.TWITCH_EXTENSION_VERSION }}" >> .env
           echo "TWITCH_OWNER=${{ secrets.TWITCH_OWNER }}" >> .env
           echo "TWITCH_CLIENT_ID=${{ secrets.TWITCH_CLIENT_ID }}" >> .env
           echo "TWITCH_CLIENT_SECRET=${{ secrets.TWITCH_CLIENT_SECRET }}" >> .env
