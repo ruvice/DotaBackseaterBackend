@@ -19,9 +19,10 @@ func LoadTwitchConfig() (wrapper.TwitchConfig, error) {
 	TWITCH_OWNER := os.Getenv("TWITCH_OWNER")
 	TWITCH_CLIENT_ID := os.Getenv("TWITCH_CLIENT_ID")
 	TWITCH_CLIENT_SECRET := os.Getenv("TWITCH_CLIENT_SECRET")
+	TWITCH_EXTENSION_VERSION := os.Getenv("TWITCH_EXTENSION_VERSION")
 	twitchConfig := wrapper.TwitchConfig{
 		ExtensionSecret:  TWITCH_EXTENSION_SECRET,
-		ExtensionVersion: "0.0.1",
+		ExtensionVersion: TWITCH_EXTENSION_VERSION,
 		Owner:            TWITCH_OWNER,
 		ClientID:         TWITCH_CLIENT_ID,
 		ClientSecret:     TWITCH_CLIENT_SECRET,

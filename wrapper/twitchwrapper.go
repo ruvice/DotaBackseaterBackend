@@ -38,6 +38,7 @@ func (w *TwitchWrapper) SendMessage(twitchMessage TwitchMessage) error {
 		"Authorization": "Bearer " + jwtToken,
 		"Content-Type":  "application/json",
 	}
+	log.Println("DEBUG: ", headers, payload)
 
 	resp, err := w.sendRequest("POST", "https://api.twitch.tv/helix/extensions/chat", payload, headers)
 	if err != nil {
@@ -133,6 +134,7 @@ func (w *TwitchWrapper) GetStreamerConfig(channelID string) (string, error) {
 	for _, content := range response.Data {
 		if content.Segment == "broadcaster" {
 			trimmed := strings.Trim(content.Content, `"`)
+			log.Printf("Streamer set voteThreshold as: %s", trimmed)
 			return trimmed, nil
 		}
 	}

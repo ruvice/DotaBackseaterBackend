@@ -58,7 +58,7 @@ func (h *TwitchHandler) SendTwitchFEMessage(w http.ResponseWriter, r *http.Reque
 
 func (h *TwitchHandler) RefreshStreamerConfig(w http.ResponseWriter, r *http.Request) {
 	channelIDParam := chi.URLParam(r, "channelID")
-	log.Println("Fetching streamer config for:", channelIDParam)
+	log.Println("Refreshing streamer config for:", channelIDParam)
 	time.Sleep(2 * time.Second)
 	voteThreshold, err := h.TwitchWrapper.GetStreamerConfig(channelIDParam)
 	if err != nil {
@@ -89,7 +89,7 @@ func (h *TwitchHandler) RefreshStreamerConfig(w http.ResponseWriter, r *http.Req
 
 func (h *TwitchHandler) GetStreamerConfig(w http.ResponseWriter, r *http.Request) {
 	channelIDParam := chi.URLParam(r, "channelID")
-	log.Println("Fetching streamer config for:", channelIDParam)
+	log.Println("Get streamer config for:", channelIDParam)
 	time.Sleep(2 * time.Second)
 
 	voteThreshold, err := h.Redis.GetVoteThreshold(r.Context(), channelIDParam)

@@ -8,7 +8,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/ruvice/dotabackseaterbackend/model"
+	"github.com/ruvice/dotabackseaterbackend/utils/dbsError"
 )
 
 func (r *RedisRepo) Insert(ctx context.Context, vote model.Vote) error {
@@ -116,4 +118,68 @@ func (r *RedisRepo) ClearVotesForChannel(ctx context.Context, channelID string) 
 	}
 
 	return nil
+}
+
+func (r *RedisRepo) UpdateLastVotedItem(ctx context.Context, channelID string, itemID string) error {
+	key := "voted:" + channelID
+	value := itemID
+	err := r.Client.Set(ctx, key, value, LastVotedItemTTL*time.Second).Err()
+	if err != nil {
+		log.Println("failed to write to Redis with expiry: %w", err)
+		voteError := dbsError.NewVoteError("AddVoteRelation", dbsError.CodeUpdateLastVotedError, "Unable to add Last Voted Item", err)
+		return voteError
+	}
+
+	log.Printf("Successfully set key '%s' with value '%s' and 1 hour expiry\n", key, value)
+	return nil
+}
+
+func (r *RedisRepo) GetLastVotedItem(ctx context.Context, channelID string) (string, error) {
+	key := "voted:" + channelID
+	value, err := r.Client.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			// Key does not exist
+			log.Printf("Key '%s' does not exist in Redis\n", key)
+			return "", nil
+		}
+
+		// Other Redis errors
+		log.Println("failed to read from Redis: %w", err)
+		getError := dbsError.NewVoteError("GetLastVotedItem", dbsError.CodeRetrieveLastVotedError, "Unable to get Last Voted Item", err)
+		return "", getError
+	}
+
+	log.Printf("Successfully retrieved key '%s' with value '%s'\n", key, value)
+	return value, nil
+}
+
+func (r *RedisRepo) GetCurrentCountForChannel(ctx context.Context, channelID string) (int64, error) {
+	// Retrieve the value from Redis
+	value, err := r.Client.Get(ctx, channelID).Result()
+	if err != nil {
+		if err == redis.Nil {
+			// Key does not exist, treat as zero count
+			log.Printf("Key '%s' does not exist in Redis, returning count as 0\n", channelID)
+			getError := dbsError.NewVoteError("GetCurrentCountForChannel", dbsError.CodeRetrieveVoteCountNoKey, "Key does not exist", err)
+			return 0, getError
+		}
+
+		// Other Redis errors
+		log.Printf("Error retrieving current count for channel '%s': %v\n", channelID, err)
+
+		getError := dbsError.NewVoteError("GetCurrentCountForChannel", dbsError.CodeRetrieveVoteCountError, "Error retrieving current vote count", err)
+		return -1, getError
+	}
+
+	// Convert the value to int64
+	count, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		log.Printf("Error parsing current count for channel '%s': %v\n", channelID, err)
+		parseError := dbsError.NewVoteError("GetCurrentCountForChannel", dbsError.CodeRetrieveVoteCountError, "Error retrieving current vote count", err)
+		return -1, parseError
+	}
+
+	log.Printf("Current count for channel '%s': %d\n", channelID, count)
+	return count, nil
 }

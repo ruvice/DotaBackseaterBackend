@@ -54,6 +54,7 @@ func (w *TwitchWrapper) sendRequest(method, url string, payload interface{}, hea
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
+	fmt.Println("Sending request:", req)
 
 	return w.httpClient.Do(req)
 }
@@ -66,6 +67,7 @@ func handleResponse(resp *http.Response, err error) error {
 
 	if resp.StatusCode != 204 {
 		body, _ := io.ReadAll(resp.Body)
+		fmt.Printf("error response from Twitch: %s", string(body))
 		return fmt.Errorf("error response from Twitch: %s", string(body))
 	}
 	return nil
