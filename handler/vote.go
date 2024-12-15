@@ -87,6 +87,13 @@ func (h *Vote) Vote(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		log.Println("Sending voteUpdate: ", voteThreshold)
+		log.Println("Sending votedItem: ", votedItem.ID)
+
+		SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "votedItem", Data: votedItem.ID}, ChannelID: VoteBody.ChannelID}
+		SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "voteUpdate", Data: 0}, ChannelID: VoteBody.ChannelID}
+	} else {
+		SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "voteUpdate", Data: voteCount}, ChannelID: VoteBody.ChannelID}
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -134,13 +141,49 @@ func (h *Vote) getVoteThreshold(ctx context.Context, channelID string) int64 {
 	return voteThreshold
 }
 
-func (h *Vote) ListV3(w http.ResponseWriter, r *http.Request) {
-	channelIDParam := chi.URLParam(r, "channelID")
-	res := h.Redis.GetMostVoted(r.Context(), channelIDParam)
-	var response struct {
-		ItemID string
+func (h *Vote) GetExtensionVoteStatus(w http.ResponseWriter, r *http.Request) {
+	channelID := chi.URLParam(r, "channelID")
+	if channelID == "" {
+		log.Println("Missing channelID in URL")
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
-	response.ItemID = res
+	var response struct {
+		ItemID       string `json:"item_id,omitempty"`
+		CurrentCount int64  `json:"current_count"`
+	}
+	lastVotedID, err := h.Redis.GetLastVotedItem(r.Context(), channelID)
+	if err != nil {
+		var voteErr *dbsError.VoteError
+		if errors.As(err, &voteErr) {
+			switch voteErr.Code {
+			case dbsError.CodeRetrieveLastVotedError:
+				log.Println("Failed to find last voted item from cache cache:", err)
+			default:
+				log.Println("Unknown error occurred:", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+
+	currentCount, err := h.Redis.GetCurrentCountForChannel(r.Context(), channelID)
+	if err != nil {
+		var voteErr *dbsError.VoteError
+		if errors.As(err, &voteErr) {
+			switch voteErr.Code {
+			case dbsError.CodeRetrieveVoteCountNoKey:
+				log.Println("Key not in cache:", err)
+			default:
+				log.Println("Unknown error occurred:", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+	log.Printf("CurrentCount: %d, LastVotedID: %s\n", currentCount, lastVotedID)
+	response.CurrentCount = currentCount
+	response.ItemID = lastVotedID
 
 	data, err := json.Marshal(response)
 	if err != nil {
@@ -148,7 +191,8 @@ func (h *Vote) ListV3(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
+	log.Println("DEBUG:", data)
+	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)
 }
 
@@ -156,6 +200,7 @@ func (h *Vote) handleThresholdFulfilled(ctx context.Context, channelID string) m
 	// Get the top votes, clear all votes, reset increment count
 	votedItemID := h.Redis.GetMostVoted(ctx, channelID)
 	votedItem := h.Redis.GetItemByID(ctx, votedItemID)
+	h.Redis.UpdateLastVotedItem(ctx, channelID, votedItemID)
 	h.Redis.ClearVotesForChannel(ctx, channelID)
 	h.Redis.ClearVoteCountForChannel(ctx, channelID)
 	return votedItem

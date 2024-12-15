@@ -13,4 +13,5 @@ const (
 	VoteRelationTTL  = 10
 	VoteThresholdTTL = 604800 // 1 week
 	APIBackoffTTL    = 60
+	LastVotedItemTTL = 3600
 )

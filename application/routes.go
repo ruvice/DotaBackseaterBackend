@@ -28,6 +28,7 @@ func (a *App) loadRoutes() {
 	router.Route("/debug", a.debugRoutes)
 	router.Route("/item", a.loadItemRoutes)
 	router.Route("/config", a.loadStreamerConfigRoutes)
+	router.Route("/sse", a.voteSSERoutes)
 
 	a.router = router
 }
@@ -54,7 +55,7 @@ func (a *App) loadVoteRoutes(router chi.Router) {
 		TwitchWrapper: a.twitchWrapper,
 	}
 	router.Post("/", voteHandler.Vote)
-	router.Get("/{channelID}", voteHandler.ListV3)
+	router.Get("/{channelID}", voteHandler.GetExtensionVoteStatus)
 }
 
 func (a *App) loadItemRoutes(router chi.Router) {
@@ -81,4 +82,11 @@ func (a *App) debugRoutes(router chi.Router) {
 	}
 	router.Post("/message", twitchHandler.SendTwitchMessage)
 	router.Post("/messagefrontend", twitchHandler.SendTwitchFEMessage)
+}
+
+func (a *App) voteSSERoutes(router chi.Router) {
+	// SSEHandler handles SSE connections
+	eventHandler := &handler.EventHandler{}
+	eventHandler.StartSSEPushWorker()
+	router.Get("/{channelID}", eventHandler.EstablishSSEConnection)
 }

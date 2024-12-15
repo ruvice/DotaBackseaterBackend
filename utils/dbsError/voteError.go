@@ -11,6 +11,10 @@ const (
 	CodeItemGetRedisError
 	CodeMissingCacheVoteThreshold
 	CodeTwitchMessageTooManyRequests
+	CodeUpdateLastVotedError
+	CodeRetrieveLastVotedError
+	CodeRetrieveVoteCountNoKey
+	CodeRetrieveVoteCountError
 	CodeUnknown
 )
 
