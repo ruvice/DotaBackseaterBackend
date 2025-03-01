@@ -24,9 +24,11 @@ func (a *App) loadRoutes() {
 		fmt.Fprintf(w, "Hello world!")
 	})
 
-	router.Route("/vote", a.loadVoteRoutes)
+	router.Route("/vote", a.loadItemVoteRoutes)
+	router.Route("/vote/hero", a.loadHeroVoteRoutes)
 	router.Route("/debug", a.debugRoutes)
 	router.Route("/item", a.loadItemRoutes)
+	router.Route("/hero", a.loadHeroRoutes)
 	router.Route("/config", a.loadStreamerConfigRoutes)
 	router.Route("/sse", a.voteSSERoutes)
 
@@ -36,26 +38,36 @@ func (a *App) loadRoutes() {
 func (a *App) getCorsOptions() cors.Options {
 	var allowedOrigins []string
 	if a.debugMode {
-		allowedOrigins = []string{"https://localhost:8080", "https://" + a.config.TwitchConfig.ClientID + ".ext-twitch.tv"}
+		allowedOrigins = []string{"https://localhost:8080", "https://" + a.config.TwitchConfig.ClientID + ".ext-twitch.tv", "http://localhost:8080"}
 	} else {
 		allowedOrigins = []string{"https://" + a.config.TwitchConfig.ClientID + ".ext-twitch.tv"}
 	}
 	return cors.Options{
 		AllowedOrigins:   allowedOrigins, // Frontend origin
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Channel-Id"},
 		AllowCredentials: true, // Allow credentials if needed
 		MaxAge:           300,  // Maximum time (in seconds) for preflight to be cached
 	}
 }
 
-func (a *App) loadVoteRoutes(router chi.Router) {
+func (a *App) loadItemVoteRoutes(router chi.Router) {
 	voteHandler := &handler.Vote{
 		Redis:         a.redisRepo,
 		TwitchWrapper: a.twitchWrapper,
 	}
-	router.Post("/", voteHandler.Vote)
+	router.Post("/", voteHandler.VoteItem)
 	router.Get("/{channelID}", voteHandler.GetExtensionVoteStatus)
+}
+
+func (a *App) loadHeroVoteRoutes(router chi.Router) {
+	voteHandler := &handler.Vote{
+		Redis:         a.redisRepo,
+		TwitchWrapper: a.twitchWrapper,
+	}
+	router.Post("/", voteHandler.VoteHero)
+	router.Post("/start", voteHandler.StartHeroVote)
+	// router.Post("/stop", voteHandler.StopHeroVote)
 }
 
 func (a *App) loadItemRoutes(router chi.Router) {
@@ -65,6 +77,15 @@ func (a *App) loadItemRoutes(router chi.Router) {
 	}
 	router.Get("/", itemHandler.GetItems)
 	router.Get("/refreshItems", itemHandler.RefreshItems)
+}
+
+func (a *App) loadHeroRoutes(router chi.Router) {
+	heroHandler := &handler.HeroHandler{
+		Redis: a.redisRepo,
+		DB:    a.mongoDB,
+	}
+	router.Get("/", heroHandler.GetHeroes)
+	router.Get("/refreshHeroes", heroHandler.RefreshHeroes)
 }
 
 func (a *App) loadStreamerConfigRoutes(router chi.Router) {

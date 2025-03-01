@@ -214,6 +214,54 @@ func (r *MongoDBRepo) RefreshItems(ctx context.Context) (model.ItemMap, error) {
 	return itemMap, nil
 }
 
+func (r *MongoDBRepo) RefreshHeroes(ctx context.Context) (model.HeroMap, error) {
+	twitchExtensionDatabase := r.Client.Database("heroDatabase")
+	channelCollection := twitchExtensionDatabase.Collection("heroes")
+
+	filter := bson.M{}
+	var result bson.M
+	err := channelCollection.FindOne(ctx, filter).Decode(&result)
+	if err != nil {
+		log.Println("Failed to find docucment: ", err)
+		voteError := dbsError.NewVoteError("RefreshHeroes", dbsError.CodeHeroRefreshError, "error refreshing heroes", err)
+		return model.HeroMap{}, voteError
+	}
+
+	log.Println("Found document:", result)
+	// Create a map to store the parsed data
+	heroMap := make(model.HeroMap)
+
+	// Iterate over the bson.M map and convert keys to integers
+	for key, value := range result {
+		// Skip the `_id` field
+		if key == "_id" {
+			continue
+		}
+		heroKey := key
+		// Assert that the value is a nested object (bson.M)
+		heroData, ok := value.(bson.M)
+		if !ok {
+			log.Println("Invalid value type for key:", key)
+			voteError := dbsError.NewVoteError("RefreshHeroes", dbsError.CodeHeroRefreshError, "error refreshing items", err)
+			return model.HeroMap{}, voteError
+		}
+
+		// Extract `name` and `cost` from the nested object// Extract `name`
+		name, _ := heroData["name"].(string)
+		heroName, _ := heroData["heroName"].(string)
+		heroID, _ := heroData["id"].(string)
+		fmt.Println("WE GOT THE LOG", heroData, heroID)
+		hero := model.Hero{
+			Name:     name,
+			HeroName: heroName,
+			ID:       heroID,
+		}
+		fmt.Println(hero)
+		heroMap[heroKey] = hero
+	}
+	return heroMap, nil
+}
+
 func (r *MongoDBRepo) GetItems(ctx context.Context) {
 	log.Println("Getting items from Mongo")
 }

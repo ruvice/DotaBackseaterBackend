@@ -12,6 +12,13 @@ func (a *App) PerformInitTasks(ctx context.Context) error {
 	}
 	a.redisRepo.WriteItemMapToCache(ctx, itemMap)
 	a.redisRepo.CacheItems(ctx, itemMap)
+
+	heroMap, err := a.mongoDB.RefreshHeroes(ctx)
+	if err != nil {
+		return err
+	}
+	a.redisRepo.WriteHeroMapToCache(ctx, heroMap)
+	a.redisRepo.CacheHeroes(ctx, heroMap)
 	return nil
 }
 
