@@ -130,9 +130,12 @@ func (r *RedisRepo) ClearVotesForChannel(ctx context.Context, key string) error 
 	return nil
 }
 
-func (r *RedisRepo) UpdateLastVotedID(ctx context.Context, key string, id string) error {
+func (r *RedisRepo) UpdateLastVotedID(ctx context.Context, key string, id string, duration time.Duration) error {
 	value := id
-	err := r.Client.Set(ctx, key, value, LastVotedItemTTL*time.Second).Err()
+	if duration == 0 {
+		duration = LastVotedItemTTL * time.Second
+	}
+	err := r.Client.Set(ctx, key, value, duration).Err()
 	if err != nil {
 		log.Println("failed to write to Redis with expiry: %w", err)
 		voteError := dbsError.NewVoteError("AddVoteRelation", dbsError.CodeUpdateLastVotedError, "Unable to add Last Voted Item", err)
@@ -143,8 +146,7 @@ func (r *RedisRepo) UpdateLastVotedID(ctx context.Context, key string, id string
 	return nil
 }
 
-func (r *RedisRepo) GetLastVotedItem(ctx context.Context, channelID string) (string, error) {
-	key := "lastVotedItem:" + channelID
+func (r *RedisRepo) GetLastVotedID(ctx context.Context, key string) (string, error) {
 	value, err := r.Client.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
@@ -155,7 +157,7 @@ func (r *RedisRepo) GetLastVotedItem(ctx context.Context, channelID string) (str
 
 		// Other Redis errors
 		log.Println("failed to read from Redis: %w", err)
-		getError := dbsError.NewVoteError("GetLastVotedItem", dbsError.CodeRetrieveLastVotedError, "Unable to get Last Voted Item", err)
+		getError := dbsError.NewVoteError("GetLastVotedID", dbsError.CodeRetrieveLastVotedError, "Unable to get Last Voted Item", err)
 		return "", getError
 	}
 

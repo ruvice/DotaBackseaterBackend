@@ -40,34 +40,29 @@ func (h *Vote) VoteHero(w http.ResponseWriter, r *http.Request) {
 	key := "votedHero:" + VoteHeroBody.ChannelID
 	sessionKey := "voteHeroSession:" + VoteHeroBody.ChannelID
 	// Check if key exists - if it does then there's an ongoing vote session
-	hasActiveVoteSession, err := h.hasActiveVoteSession(r.Context(), sessionKey)
+	hasActiveVoteSession := h.hasActiveVoteSession(r.Context(), sessionKey)
 	if !hasActiveVoteSession {
 		log.Println("Received vote with no active vote session")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if err != nil {
-		log.Println("Error retrieving current active vote session: ", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 	// Handling vote relation
-	voteRelationKey := "voteRelation:" + VoteHeroBody.ChannelID + ":" + VoteHeroBody.TwitchID
-	hasVoteRelation := h.Redis.GetHeroVoteRelation(r.Context(), voteRelationKey)
-	if hasVoteRelation {
-		log.Println("User already voted")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	voteError := h.Redis.AddHeroVoteRelation(r.Context(), voteRelationKey)
-	if voteError != nil {
-		log.Println(voteError)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+	// voteRelationKey := "voteRelation:" + VoteHeroBody.ChannelID + ":" + VoteHeroBody.TwitchID
+	// hasVoteRelation := h.Redis.GetHeroVoteRelation(r.Context(), voteRelationKey)
+	// if hasVoteRelation {
+	// 	log.Println("User already voted")
+	// 	w.WriteHeader(http.StatusBadRequest)
+	// 	return
+	// }
+	// voteError := h.Redis.AddHeroVoteRelation(r.Context(), voteRelationKey)
+	// if voteError != nil {
+	// 	log.Println(voteError)
+	// 	w.WriteHeader(http.StatusInternalServerError)
+	// 	return
+	// }
 	// Adding actual vote
 	h.Redis.AddVote(r.Context(), key, VoteHeroBody.HeroID)
-	topVotes, err := h.Redis.GetMostVoted(r.Context(), key, 5)
+	topVotes, err := h.Redis.GetMostVoted(r.Context(), key, 10)
 	if err != nil {
 		log.Println("Failed to retrieve most voted heroes", err)
 	}
@@ -151,7 +146,7 @@ func (h *Vote) stopVote(ctx context.Context, channelID string) {
 	}
 
 	key := "votedHero:" + channelID
-	topVotes, err := h.Redis.GetMostVoted(ctx, key, 5)
+	topVotes, err := h.Redis.GetMostVoted(ctx, key, 10)
 	if err != nil {
 		log.Println("Failed to retrieve most voted heroes")
 	}
@@ -175,12 +170,6 @@ func (h *Vote) stopVote(ctx context.Context, channelID string) {
 			}
 		}
 	}
-	jsonData, err := json.Marshal(topVotes)
-	if err != nil {
-		log.Println("Error encoding JSON:", err)
-		return
-	}
-
 	err = h.Redis.Client.Del(ctx, key).Err()
 	if err != nil {
 		log.Printf("Failed to delete key %s: %v\n", key, err)
@@ -191,6 +180,14 @@ func (h *Vote) stopVote(ctx context.Context, channelID string) {
 	if err != nil {
 		log.Println("Failed to clear hero vote relation", err)
 	}
+
+	jsonData, err := json.Marshal(topVotes)
+	if err != nil {
+		log.Println("Error encoding JSON:", err)
+		return
+	}
+
+	h.Redis.UpdateLastVotedID(ctx, "lastVotedHeroMap:"+channelID, string(jsonData), 120*time.Second)
 
 	SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "votedHero", Data: string(jsonData)}, ChannelID: channelID}
 	SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "voteSession", Data: "stopped"}, ChannelID: channelID}
@@ -212,30 +209,33 @@ func (h *Vote) GetExtensionHeroVoteStatus(w http.ResponseWriter, r *http.Request
 	key := "votedHero:" + channelID
 	sessionKey := "voteHeroSession:" + channelID
 	// Check if key exists - if it does then there's an ongoing vote sessio
-	hasActiveVoteSession, err := h.hasActiveVoteSession(r.Context(), sessionKey)
-	if err != nil {
-		log.Println("Error retrieving current active vote session: ", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	if !hasActiveVoteSession {
-		log.Println("No active vote session", sessionKey)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	topVotes, err := h.Redis.GetMostVoted(r.Context(), key, 5)
+	hasActiveVoteSession := h.hasActiveVoteSession(r.Context(), sessionKey)
+	topVotes, err := h.Redis.GetMostVoted(r.Context(), key, 10)
 	if err != nil {
 		log.Println("Failed to retrieve most voted heroes")
 	}
-	// jsonData, err := json.Marshal(topVotes)
-	// if err != nil {
-	// 	log.Println("Error encoding JSON:", err)
-	// 	w.WriteHeader(http.StatusInternalServerError)
-	// 	return
-	// }
+
+	if len(topVotes) == 0 {
+		// Use last HeroVoteMap instead (if any)
+		key := "lastVotedHeroMap:" + channelID
+		res, err := h.Redis.GetLastVotedID(r.Context(), key)
+		if err != nil {
+			log.Println("Failed to retrieve last HeroVoteMap")
+		} else {
+			var lastHeroVoteMap map[string]int
+			err = json.Unmarshal([]byte(res), &lastHeroVoteMap)
+			if err != nil {
+				log.Println("Failed to parse last HeroVoteMap:", err)
+			} else if !hasActiveVoteSession {
+				topVotes = lastHeroVoteMap
+			}
+		}
+	}
+
 	var response struct {
-		HeroVoteMap map[string]int `json:"hero_vote_map"`
-		HasVoted    bool           `json:"has_voted"`
+		HeroVoteMap          map[string]int `json:"hero_vote_map"`
+		HasActiveVoteSession bool           `json:"has_active_vote_session"`
+		HasVoted             bool           `json:"has_voted"`
 	}
 
 	voteRelationKey := "voteRelation:" + channelID + ":" + twitchID
@@ -243,6 +243,7 @@ func (h *Vote) GetExtensionHeroVoteStatus(w http.ResponseWriter, r *http.Request
 
 	response.HeroVoteMap = topVotes
 	response.HasVoted = hasVoted
+	response.HasActiveVoteSession = hasActiveVoteSession
 	data, err := json.Marshal(response)
 	log.Println("ANDREW WTF", response, data)
 	if err != nil {
@@ -254,10 +255,10 @@ func (h *Vote) GetExtensionHeroVoteStatus(w http.ResponseWriter, r *http.Request
 	w.Write(data)
 }
 
-func (h *Vote) hasActiveVoteSession(ctx context.Context, key string) (bool, error) {
+func (h *Vote) hasActiveVoteSession(ctx context.Context, key string) bool {
 	hasActiveVoteSession, err := h.Redis.KeyExists(ctx, key)
 	if err != nil {
-		return false, err
+		return false
 	}
-	return hasActiveVoteSession, nil
+	return hasActiveVoteSession
 }

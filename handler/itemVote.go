@@ -161,7 +161,9 @@ func (h *Vote) GetExtensionVoteStatus(w http.ResponseWriter, r *http.Request) {
 		ItemID       string `json:"item_id,omitempty"`
 		CurrentCount int64  `json:"current_count"`
 	}
-	lastVotedID, err := h.Redis.GetLastVotedItem(r.Context(), channelID)
+
+	key := "lastVotedItem:" + channelID
+	lastVotedID, err := h.Redis.GetLastVotedID(r.Context(), key)
 	if err != nil {
 		var voteErr *dbsError.VoteError
 		if errors.As(err, &voteErr) {
@@ -215,7 +217,7 @@ func (h *Vote) handleThresholdFulfilled(ctx context.Context, channelID string) m
 	}
 	mostVotedID := h.GetTopVotedId(topVotes)
 	votedItem := h.Redis.GetItemByID(ctx, mostVotedID)
-	h.Redis.UpdateLastVotedID(ctx, "lastVotedItem:"+channelID, mostVotedID)
+	h.Redis.UpdateLastVotedID(ctx, "lastVotedItem:"+channelID, mostVotedID, 0)
 	h.Redis.ClearVotesForChannel(ctx, key)
 	h.Redis.ClearVoteCountForChannel(ctx, channelID)
 	return votedItem
