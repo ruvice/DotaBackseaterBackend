@@ -45,7 +45,7 @@ func (a *App) getCorsOptions() cors.Options {
 	return cors.Options{
 		AllowedOrigins:   allowedOrigins, // Frontend origin
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Channel-Id"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Channel-Id", "Twitch-Id"},
 		AllowCredentials: true, // Allow credentials if needed
 		MaxAge:           300,  // Maximum time (in seconds) for preflight to be cached
 	}
@@ -67,7 +67,8 @@ func (a *App) loadHeroVoteRoutes(router chi.Router) {
 	}
 	router.Post("/", voteHandler.VoteHero)
 	router.Post("/start", voteHandler.StartHeroVote)
-	// router.Post("/stop", voteHandler.StopHeroVote)
+	router.Post("/stop", voteHandler.StopHeroVote)
+	router.Get("/status", voteHandler.GetExtensionHeroVoteStatus)
 }
 
 func (a *App) loadItemRoutes(router chi.Router) {

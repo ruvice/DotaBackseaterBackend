@@ -39,10 +39,10 @@ func (h *Vote) VoteItem(w http.ResponseWriter, r *http.Request) {
 	if headerChannelID != "" {
 		VoteItemBody.ChannelID = headerChannelID
 	}
-
-	ttl := h.Redis.GetVoteRelationTTL(r.Context(), VoteItemBody.ChannelID, VoteItemBody.TwitchID)
+	voteRelationKey := "itemRelation:" + VoteHeroBody.ChannelID + ":" + VoteHeroBody.TwitchID
+	ttl := h.Redis.GetItemVoteRelationTTL(r.Context(), voteRelationKey)
 	if ttl <= 0 {
-		voteError := h.Redis.AddVoteRelation(r.Context(), VoteItemBody.ChannelID, VoteItemBody.TwitchID)
+		voteError := h.Redis.AddItemVoteRelation(r.Context(), voteRelationKey)
 		if voteError != nil {
 			log.Println(voteError)
 		}
@@ -65,7 +65,7 @@ func (h *Vote) VoteItem(w http.ResponseWriter, r *http.Request) {
 		// return
 	}
 
-	key := "votesItem:" + VoteItemBody.ChannelID
+	key := "votedItem:" + VoteItemBody.ChannelID
 	h.Redis.AddVote(r.Context(), key, VoteItemBody.ItemID)
 	h.Redis.SetExpiry(r.Context(), key, 0)
 
@@ -161,7 +161,9 @@ func (h *Vote) GetExtensionVoteStatus(w http.ResponseWriter, r *http.Request) {
 		ItemID       string `json:"item_id,omitempty"`
 		CurrentCount int64  `json:"current_count"`
 	}
-	lastVotedID, err := h.Redis.GetLastVotedItem(r.Context(), channelID)
+
+	key := "lastVotedItem:" + channelID
+	lastVotedID, err := h.Redis.GetLastVotedID(r.Context(), key)
 	if err != nil {
 		var voteErr *dbsError.VoteError
 		if errors.As(err, &voteErr) {
@@ -207,15 +209,16 @@ func (h *Vote) GetExtensionVoteStatus(w http.ResponseWriter, r *http.Request) {
 
 func (h *Vote) handleThresholdFulfilled(ctx context.Context, channelID string) model.Item {
 	// Get the top votes, clear all votes, reset increment count
-	topVotes, err := h.Redis.GetMostVoted(ctx, channelID, "Item", 1)
+	key := "votedItem:" + channelID
+	topVotes, err := h.Redis.GetMostVoted(ctx, key, 1)
 	if err != nil {
 		log.Println(err)
 		return model.Item{}
 	}
 	mostVotedID := h.GetTopVotedId(topVotes)
 	votedItem := h.Redis.GetItemByID(ctx, mostVotedID)
-	h.Redis.UpdateLastVotedItem(ctx, channelID, mostVotedID)
-	h.Redis.ClearVotesForChannel(ctx, channelID)
+	h.Redis.UpdateLastVotedID(ctx, "lastVotedItem:"+channelID, mostVotedID, 0)
+	h.Redis.ClearVotesForChannel(ctx, key)
 	h.Redis.ClearVoteCountForChannel(ctx, channelID)
 	return votedItem
 }
@@ -233,4 +236,15 @@ func (h *Vote) GetTopVotedId(voteResults map[string]int) string {
 		}
 	}
 	return topItem
+}
+
+func (h *Vote) KeyExists(ctx context.Context, key string) (bool, error) {
+	// Check if the key exists in Redis
+	exists, err := h.Redis.Client.Exists(ctx, key).Result()
+	if err != nil {
+		return false, err
+	}
+
+	// Exists() returns an integer, 1 means the key exists
+	return exists > 0, nil
 }

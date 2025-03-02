@@ -47,7 +47,11 @@ func (r *RedisRepo) Insert(ctx context.Context, vote model.Vote) error {
 // Adds a vote with Twitch ID for a key in a channel using a hash
 func (r *RedisRepo) AddVote(ctx context.Context, key string, id string) {
 	// Increment vote count in a hash
-	r.Client.ZIncrBy(ctx, key, 1, id)
+	log.Println("Adding vote for", key)
+	err := r.Client.ZIncrBy(ctx, key, 1, id).Err()
+	if err != nil {
+		log.Println("Failed to add vote", err)
+	}
 }
 
 func (r *RedisRepo) SetExpiry(ctx context.Context, key string, duration time.Duration) error {
@@ -63,17 +67,14 @@ func (r *RedisRepo) SetExpiry(ctx context.Context, key string, duration time.Dur
 }
 
 // Gets the most frequent item_id
-func (r *RedisRepo) GetMostVoted(ctx context.Context, channelID string, voteType string, topN int64) (map[string]int, error) {
-	// Get all votes from the hash
-	key := "votes" + voteType + ":" + channelID
-	// Get top N items by score (highest votes first)
+func (r *RedisRepo) GetMostVoted(ctx context.Context, key string, topN int64) (map[string]int, error) {
 	results, err := r.Client.ZRevRangeWithScores(ctx, key, 0, int64(topN-1)).Result()
 	if err != nil {
 		return nil, err
 	}
 
 	if len(results) == 0 {
-		fmt.Printf("No votes recorded for channel %s.\n", channelID)
+		fmt.Printf("No votes recorded for channel %s.\n", key)
 		return nil, err
 	}
 
@@ -88,7 +89,6 @@ func (r *RedisRepo) GetMostVoted(ctx context.Context, channelID string, voteType
 		tally[itemID] = int(result.Score) // Convert float64 to int
 	}
 
-	log.Println("Tally: ", tally)
 	return tally, nil
 }
 
@@ -112,9 +112,9 @@ func (r *RedisRepo) ClearVoteCountForChannel(ctx context.Context, channelID stri
 	}
 }
 
-func (r *RedisRepo) ClearVotesForChannel(ctx context.Context, channelID string) error {
+func (r *RedisRepo) ClearVotesForChannel(ctx context.Context, key string) error {
 	// Delete the entire hash for the given channelID
-	result, err := r.Client.Del(ctx, "votes:"+channelID).Result()
+	result, err := r.Client.Del(ctx, key).Result()
 	if err != nil {
 		log.Println("Error clearing votes:", err)
 		return err
@@ -122,18 +122,20 @@ func (r *RedisRepo) ClearVotesForChannel(ctx context.Context, channelID string) 
 
 	// Check if any keys were actually deleted
 	if result == 0 {
-		log.Printf("No votes found for channel %s\n", channelID)
+		log.Printf("No votes found for channel %s\n", key)
 	} else {
-		log.Printf("Votes cleared for channel %s\n", channelID)
+		log.Printf("Votes cleared for channel %s\n", key)
 	}
 
 	return nil
 }
 
-func (r *RedisRepo) UpdateLastVotedItem(ctx context.Context, channelID string, itemID string) error {
-	key := "voted:" + channelID
-	value := itemID
-	err := r.Client.Set(ctx, key, value, LastVotedItemTTL*time.Second).Err()
+func (r *RedisRepo) UpdateLastVotedID(ctx context.Context, key string, id string, duration time.Duration) error {
+	value := id
+	if duration == 0 {
+		duration = LastVotedItemTTL * time.Second
+	}
+	err := r.Client.Set(ctx, key, value, duration).Err()
 	if err != nil {
 		log.Println("failed to write to Redis with expiry: %w", err)
 		voteError := dbsError.NewVoteError("AddVoteRelation", dbsError.CodeUpdateLastVotedError, "Unable to add Last Voted Item", err)
@@ -144,8 +146,7 @@ func (r *RedisRepo) UpdateLastVotedItem(ctx context.Context, channelID string, i
 	return nil
 }
 
-func (r *RedisRepo) GetLastVotedItem(ctx context.Context, channelID string) (string, error) {
-	key := "voted:" + channelID
+func (r *RedisRepo) GetLastVotedID(ctx context.Context, key string) (string, error) {
 	value, err := r.Client.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
@@ -156,7 +157,7 @@ func (r *RedisRepo) GetLastVotedItem(ctx context.Context, channelID string) (str
 
 		// Other Redis errors
 		log.Println("failed to read from Redis: %w", err)
-		getError := dbsError.NewVoteError("GetLastVotedItem", dbsError.CodeRetrieveLastVotedError, "Unable to get Last Voted Item", err)
+		getError := dbsError.NewVoteError("GetLastVotedID", dbsError.CodeRetrieveLastVotedError, "Unable to get Last Voted Item", err)
 		return "", getError
 	}
 
