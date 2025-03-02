@@ -44,42 +44,52 @@ func (r *RedisRepo) Insert(ctx context.Context, vote model.Vote) error {
 	return nil
 }
 
-// Adds a vote with Twitch ID for an item in a channel using a hash
-func (r *RedisRepo) AddVote(ctx context.Context, channelID string, itemID string, twitchID string) {
+// Adds a vote with Twitch ID for a key in a channel using a hash
+func (r *RedisRepo) AddVote(ctx context.Context, key string, id string) {
 	// Increment vote count in a hash
-	key := "votes:" + channelID
-	r.Client.HIncrBy(ctx, key, itemID, 1)
-	r.Client.Expire(ctx, key, VoteTTL*time.Second)
+	r.Client.ZIncrBy(ctx, key, 1, id)
+}
 
-	log.Printf("Vote added for item %s by Twitch user %s in channel %s\n", itemID, twitchID, channelID)
+func (r *RedisRepo) SetExpiry(ctx context.Context, key string, duration time.Duration) error {
+	if duration == 0 {
+		duration = VoteTTL * time.Second
+	}
+
+	err := r.Client.Expire(ctx, key, duration).Err()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Gets the most frequent item_id
-func (r *RedisRepo) GetMostVoted(ctx context.Context, channelID string) string {
+func (r *RedisRepo) GetMostVoted(ctx context.Context, channelID string, voteType string, topN int64) (map[string]int, error) {
 	// Get all votes from the hash
-	votes, err := r.Client.HGetAll(ctx, "votes:"+channelID).Result()
+	key := "votes" + voteType + ":" + channelID
+	// Get top N items by score (highest votes first)
+	results, err := r.Client.ZRevRangeWithScores(ctx, key, 0, int64(topN-1)).Result()
 	if err != nil {
-		log.Println("Error getting votes:", err)
-		return ""
+		return nil, err
 	}
 
-	// Find the item_id with the highest vote count
-	var topItemID string
-	var maxVotes int64
+	if len(results) == 0 {
+		fmt.Printf("No votes recorded for channel %s.\n", channelID)
+		return nil, err
+	}
 
-	log.Println(votes)
-	for item, countStr := range votes {
-		count, err := strconv.ParseInt(countStr, 10, 64)
-		if err != nil {
-			log.Printf("Skipping invalid vote count for item %s: %v\n", item, err)
+	// Convert results to a structured format
+	tally := make(map[string]int)
+	for _, result := range results {
+		itemID, ok := result.Member.(string)
+		if !ok {
+			fmt.Println("Error converting Member to string")
 			continue
 		}
-		if count > maxVotes {
-			maxVotes = count
-			topItemID = item
-		}
+		tally[itemID] = int(result.Score) // Convert float64 to int
 	}
-	return topItemID
+
+	log.Println("Tally: ", tally)
+	return tally, nil
 }
 
 func (r *RedisRepo) IncrementForChannel(ctx context.Context, channelID string) (int64, error) {
@@ -182,4 +192,15 @@ func (r *RedisRepo) GetCurrentCountForChannel(ctx context.Context, channelID str
 
 	log.Printf("Current count for channel '%s': %d\n", channelID, count)
 	return count, nil
+}
+
+func (r *RedisRepo) KeyExists(ctx context.Context, key string) (bool, error) {
+	// Check if the key exists in Redis
+	exists, err := r.Client.Exists(ctx, key).Result()
+	if err != nil {
+		return false, err
+	}
+
+	// Exists() returns an integer, 1 means the key exists
+	return exists > 0, nil
 }

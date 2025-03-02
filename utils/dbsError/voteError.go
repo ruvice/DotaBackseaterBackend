@@ -9,6 +9,8 @@ const (
 	CodeVoteRelationExpirationError
 	CodeItemRefreshError
 	CodeItemGetRedisError
+	CodeHeroRefreshError
+	CodeHeroGetRedisError
 	CodeMissingCacheVoteThreshold
 	CodeTwitchMessageTooManyRequests
 	CodeUpdateLastVotedError

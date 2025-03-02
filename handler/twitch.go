@@ -60,6 +60,13 @@ func (h *TwitchHandler) RefreshStreamerConfig(w http.ResponseWriter, r *http.Req
 	channelIDParam := chi.URLParam(r, "channelID")
 	log.Println("Refreshing streamer config for:", channelIDParam)
 	time.Sleep(2 * time.Second)
+
+	// Preferentially use channel_id from header for newer versions
+	// TODO: Deprecate old channel_id in request body
+	headerChannelID := r.Header.Get("Channel-Id")
+	if headerChannelID != "" {
+		channelIDParam = headerChannelID
+	}
 	voteThreshold, err := h.TwitchWrapper.GetStreamerConfig(channelIDParam)
 	if err != nil {
 		log.Println("Error retrieving configuration", err)
@@ -91,6 +98,13 @@ func (h *TwitchHandler) GetStreamerConfig(w http.ResponseWriter, r *http.Request
 	channelIDParam := chi.URLParam(r, "channelID")
 	log.Println("Get streamer config for:", channelIDParam)
 	time.Sleep(2 * time.Second)
+
+	// Preferentially use channel_id from header for newer versions
+	// TODO: Deprecate old channel_id in request body
+	headerChannelID := r.Header.Get("Channel-Id")
+	if headerChannelID != "" {
+		channelIDParam = headerChannelID
+	}
 
 	voteThreshold, err := h.Redis.GetVoteThreshold(r.Context(), channelIDParam)
 	if err != nil {
