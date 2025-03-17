@@ -66,8 +66,8 @@ jobs:
           ssh -i ~/.ssh/aws-keypair.pem -o StrictHostKeyChecking=no ruvice@${{ secrets.EC2_HOST }} << 'EOF'
           cd /home/ubuntu
           docker rmi -f dotabackseaterbackend || true
+          docker image prune -f
           docker load -i dotabackseaterbackend.tar
           docker-compose down || true
           docker-compose up -d
-          docker image prune
           EOF
