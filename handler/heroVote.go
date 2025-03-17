@@ -47,19 +47,33 @@ func (h *Vote) VoteHero(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Handling vote relation
-	// voteRelationKey := "voteRelation:" + VoteHeroBody.ChannelID + ":" + VoteHeroBody.TwitchID
-	// hasVoteRelation := h.Redis.GetHeroVoteRelation(r.Context(), voteRelationKey)
-	// if hasVoteRelation {
-	// 	log.Println("User already voted")
-	// 	w.WriteHeader(http.StatusBadRequest)
-	// 	return
-	// }
-	// voteError := h.Redis.AddHeroVoteRelation(r.Context(), voteRelationKey)
-	// if voteError != nil {
-	// 	log.Println(voteError)
-	// 	w.WriteHeader(http.StatusInternalServerError)
-	// 	return
-	// }
+	voteRelationKey := "voteRelation:" + VoteHeroBody.ChannelID + ":" + VoteHeroBody.TwitchID
+	hasVoteRelation := h.Redis.GetHeroVoteRelation(r.Context(), voteRelationKey)
+	if hasVoteRelation {
+		log.Println("User already voted")
+		w.WriteHeader(http.StatusBadRequest)
+		// Define error message
+		message := map[string]string{"error_message": "You have already voted"}
+		// Convert message to JSON
+		jsonResponse, _ := json.Marshal(message)
+		// Set Content-Type and write response
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(jsonResponse)
+		return
+	}
+	voteError := h.Redis.AddHeroVoteRelation(r.Context(), voteRelationKey)
+	if voteError != nil {
+		log.Println(voteError)
+		w.WriteHeader(http.StatusInternalServerError)
+		// Define error message
+		message := map[string]string{"error_message": "Something went wrong, try again later"}
+		// Convert message to JSON
+		jsonResponse, _ := json.Marshal(message)
+		// Set Content-Type and write response
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(jsonResponse)
+		return
+	}
 	// Adding actual vote
 	h.Redis.AddVote(r.Context(), key, VoteHeroBody.HeroID)
 	topVotes, err := h.Redis.GetMostVoted(r.Context(), key, 10)
@@ -69,6 +83,14 @@ func (h *Vote) VoteHero(w http.ResponseWriter, r *http.Request) {
 	jsonData, err := json.Marshal(topVotes)
 	if err != nil {
 		log.Println("Error encoding JSON:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		// Define error message
+		message := map[string]string{"error_message": "Something went wrong, try again later"}
+		// Convert message to JSON
+		jsonResponse, _ := json.Marshal(message)
+		// Set Content-Type and write response
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(jsonResponse)
 		return
 	}
 
