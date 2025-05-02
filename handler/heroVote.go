@@ -7,16 +7,15 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/ruvice/dotabackseaterbackend/utils/dbsError"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
-var VoteStartBody struct {
-	Duration string `json:"duration,omitempty"`
-}
+// var VoteStartBody struct {
+// 	Duration string `json:"duration,omitempty"`
+// }
 
 func (h *Vote) VoteHero(w http.ResponseWriter, r *http.Request) {
 	log.Println("New vote")
@@ -47,19 +46,19 @@ func (h *Vote) VoteHero(w http.ResponseWriter, r *http.Request) {
 	}
 	// Handling vote relation
 	voteRelationKey := "voteRelation:" + body.ChannelID + ":" + body.TwitchID
-	hasVoteRelation := h.Redis.GetHeroVoteRelation(r.Context(), voteRelationKey)
-	if hasVoteRelation {
-		log.Println("User already voted")
-		w.WriteHeader(http.StatusBadRequest)
-		// Define error message
-		message := map[string]string{"error_message": "You have already voted"}
-		// Convert message to JSON
-		jsonResponse, _ := json.Marshal(message)
-		// Set Content-Type and write response
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(jsonResponse)
-		return
-	}
+	// hasVoteRelation := h.Redis.GetHeroVoteRelation(r.Context(), voteRelationKey)
+	// if hasVoteRelation {
+	// 	log.Println("User already voted")
+	// 	w.WriteHeader(http.StatusBadRequest)
+	// 	// Define error message
+	// 	message := map[string]string{"error_message": "You have already voted"}
+	// 	// Convert message to JSON
+	// 	jsonResponse, _ := json.Marshal(message)
+	// 	// Set Content-Type and write response
+	// 	w.Header().Set("Content-Type", "application/json")
+	// 	w.Write(jsonResponse)
+	// 	return
+	// }
 	voteError := h.Redis.AddHeroVoteRelation(r.Context(), voteRelationKey)
 	if voteError != nil {
 		log.Println(voteError)
@@ -105,29 +104,36 @@ func (h *Vote) StartHeroVote(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	if err := json.NewDecoder(r.Body).Decode(&VoteStartBody); err != nil {
+	var body struct {
+		Duration int `json:"duration"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		log.Println("body fked up")
+		log.Println("❌ JSON decode error:", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	durationInt, err := strconv.Atoi(VoteStartBody.Duration)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		log.Println("Error converting duration to int", err)
-		return
-	}
-	if durationInt < 10 {
+	if body.Duration < 10 {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Println("Duration under 10 seconds")
 		return
 	}
-	duration := time.Duration(durationInt) * time.Second
+	duration := time.Duration(body.Duration) * time.Second
 
 	// Set expiration on the key
-	h.SessionManager.Start(channelID, duration)
 	hasActiveVoteSession := h.SessionManager.HasActive(r.Context(), channelID)
+	if hasActiveVoteSession {
+		message := map[string]string{"error_message": "There is already an ongoing vote session, try again later"}
+		// Convert message to JSON
+		jsonResponse, _ := json.Marshal(message)
+		// Set Content-Type and write response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(jsonResponse)
+	}
+
+	h.SessionManager.Start(channelID, duration)
 	log.Println(hasActiveVoteSession)
 
 	fmt.Printf("Voting session started for channel %s, expires in %v seconds.\n", channelID, duration.Seconds())
