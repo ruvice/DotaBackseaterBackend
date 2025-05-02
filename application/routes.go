@@ -1,7 +1,9 @@
 package application
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -31,6 +33,7 @@ func (a *App) loadRoutes() {
 	router.Route("/hero", a.loadHeroRoutes)
 	router.Route("/config", a.loadStreamerConfigRoutes)
 	router.Route("/sse", a.voteSSERoutes)
+	router.Route("/ws", a.wsRoutes)
 
 	a.router = router
 }
@@ -55,6 +58,7 @@ func (a *App) loadItemVoteRoutes(router chi.Router) {
 	voteHandler := &handler.Vote{
 		Redis:         a.redisRepo,
 		TwitchWrapper: a.twitchWrapper,
+		Broadcaster:   &handler.CombinedBroadcaster{},
 	}
 	router.Post("/", voteHandler.VoteItem)
 	router.Get("/{channelID}", voteHandler.GetExtensionVoteStatus)
@@ -64,7 +68,15 @@ func (a *App) loadHeroVoteRoutes(router chi.Router) {
 	voteHandler := &handler.Vote{
 		Redis:         a.redisRepo,
 		TwitchWrapper: a.twitchWrapper,
+		Broadcaster:   &handler.CombinedBroadcaster{},
 	}
+	voteHandler.SessionManager = handler.NewVoteSessionManager(
+		a.redisRepo.Client, // redis
+		"voteHeroSession:", // key prefix
+		func(channelID string) { // onExpire callback
+			voteHandler.StopHeroVoteInternal(context.Background(), channelID)
+		},
+	)
 	router.Post("/", voteHandler.VoteHero)
 	router.Post("/start", voteHandler.StartHeroVote)
 	router.Post("/stop", voteHandler.StopHeroVote)
@@ -73,8 +85,9 @@ func (a *App) loadHeroVoteRoutes(router chi.Router) {
 
 func (a *App) loadItemRoutes(router chi.Router) {
 	itemHandler := &handler.ItemHandler{
-		Redis: a.redisRepo,
-		DB:    a.mongoDB,
+		Redis:       a.redisRepo,
+		DB:          a.mongoDB,
+		Broadcaster: &handler.CombinedBroadcaster{},
 	}
 	router.Get("/", itemHandler.GetItems)
 	router.Get("/refreshItems", itemHandler.RefreshItems)
@@ -111,4 +124,12 @@ func (a *App) voteSSERoutes(router chi.Router) {
 	eventHandler := &handler.EventHandler{}
 	eventHandler.StartSSEPushWorker()
 	router.Get("/{channelID}", eventHandler.EstablishSSEConnection)
+}
+
+func (a *App) wsRoutes(router chi.Router) {
+	log.Println("✅ WebSocket route mounted")
+	wsHandler := &handler.WSHandler{}
+	wsHandler.StartWSPushWorker()
+	// Add your WebSocket route
+	router.Get("/{channelID}", wsHandler.HandleWebSocket)
 }

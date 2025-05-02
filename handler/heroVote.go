@@ -7,60 +7,58 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/ruvice/dotabackseaterbackend/utils/dbsError"
 	"github.com/ruvice/dotabackseaterbackend/wrapper"
 )
 
-var VoteHeroBody struct {
-	ChannelID string `json:"channel_id,omitempty"`
-	TwitchID  string `json:"twitch_id,omitempty"`
-	HeroID    string `json:"hero_id,omitempty"`
-}
-
-var VoteStartBody struct {
-	Duration string `json:"duration,omitempty"`
-}
+// var VoteStartBody struct {
+// 	Duration string `json:"duration,omitempty"`
+// }
 
 func (h *Vote) VoteHero(w http.ResponseWriter, r *http.Request) {
 	log.Println("New vote")
 
-	if err := json.NewDecoder(r.Body).Decode(&VoteHeroBody); err != nil {
+	var body struct {
+		ChannelID string `json:"channel_id,omitempty"`
+		TwitchID  string `json:"twitch_id,omitempty"`
+		HeroID    string `json:"hero_id,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		log.Println("body fked up")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	headerChannelID := r.Header.Get("Channel-Id")
 	if headerChannelID != "" {
-		VoteHeroBody.ChannelID = headerChannelID
+		body.ChannelID = headerChannelID
 	}
 
-	key := "votedHero:" + VoteHeroBody.ChannelID
-	sessionKey := "voteHeroSession:" + VoteHeroBody.ChannelID
+	key := "votedHero:" + body.ChannelID
 	// Check if key exists - if it does then there's an ongoing vote session
-	hasActiveVoteSession := h.hasActiveVoteSession(r.Context(), sessionKey)
+	hasActiveVoteSession := h.SessionManager.HasActive(r.Context(), body.ChannelID)
 	if !hasActiveVoteSession {
 		log.Println("Received vote with no active vote session")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	// Handling vote relation
-	voteRelationKey := "voteRelation:" + VoteHeroBody.ChannelID + ":" + VoteHeroBody.TwitchID
-	hasVoteRelation := h.Redis.GetHeroVoteRelation(r.Context(), voteRelationKey)
-	if hasVoteRelation {
-		log.Println("User already voted")
-		w.WriteHeader(http.StatusBadRequest)
-		// Define error message
-		message := map[string]string{"error_message": "You have already voted"}
-		// Convert message to JSON
-		jsonResponse, _ := json.Marshal(message)
-		// Set Content-Type and write response
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(jsonResponse)
-		return
-	}
+	voteRelationKey := "voteRelation:" + body.ChannelID + ":" + body.TwitchID
+	// hasVoteRelation := h.Redis.GetHeroVoteRelation(r.Context(), voteRelationKey)
+	// if hasVoteRelation {
+	// 	log.Println("User already voted")
+	// 	w.WriteHeader(http.StatusBadRequest)
+	// 	// Define error message
+	// 	message := map[string]string{"error_message": "You have already voted"}
+	// 	// Convert message to JSON
+	// 	jsonResponse, _ := json.Marshal(message)
+	// 	// Set Content-Type and write response
+	// 	w.Header().Set("Content-Type", "application/json")
+	// 	w.Write(jsonResponse)
+	// 	return
+	// }
 	voteError := h.Redis.AddHeroVoteRelation(r.Context(), voteRelationKey)
 	if voteError != nil {
 		log.Println(voteError)
@@ -75,7 +73,7 @@ func (h *Vote) VoteHero(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Adding actual vote
-	h.Redis.AddVote(r.Context(), key, VoteHeroBody.HeroID)
+	h.Redis.AddVote(r.Context(), key, body.HeroID)
 	topVotes, err := h.Redis.GetMostVoted(r.Context(), key, 10)
 	if err != nil {
 		log.Println("Failed to retrieve most voted heroes", err)
@@ -94,7 +92,8 @@ func (h *Vote) VoteHero(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "votedHero", Data: string(jsonData)}, ChannelID: VoteHeroBody.ChannelID}
+	h.Broadcaster.Broadcast(body.ChannelID, "votedHero", string(jsonData))
+	// SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "votedHero", Data: string(jsonData)}, ChannelID: VoteHeroBody.ChannelID}
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -105,48 +104,43 @@ func (h *Vote) StartHeroVote(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	if err := json.NewDecoder(r.Body).Decode(&VoteStartBody); err != nil {
+	var body struct {
+		Duration int `json:"duration"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		log.Println("body fked up")
+		log.Println("❌ JSON decode error:", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	durationInt, err := strconv.Atoi(VoteStartBody.Duration)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		log.Println("Error converting duration to int", err)
-		return
-	}
-	if durationInt < 10 {
+	if body.Duration < 10 {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Println("Duration under 10 seconds")
 		return
 	}
-	duration := time.Duration(durationInt) * time.Second
+	duration := time.Duration(body.Duration) * time.Second
 
 	// Set expiration on the key
-	sessionKey := "voteHeroSession:" + channelID
-	log.Println("Adding sessionkey", sessionKey)
-	err = h.Redis.Client.SetEx(r.Context(), sessionKey, "started", duration).Err()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Println("Failed to setup vote session with expiry")
-		return
+	hasActiveVoteSession := h.SessionManager.HasActive(r.Context(), channelID)
+	if hasActiveVoteSession {
+		message := map[string]string{"error_message": "There is already an ongoing vote session, try again later"}
+		// Convert message to JSON
+		jsonResponse, _ := json.Marshal(message)
+		// Set Content-Type and write response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(jsonResponse)
 	}
-	hasActiveVoteSession, err := h.Redis.KeyExists(r.Context(), sessionKey)
-	if err != nil {
-		log.Println("Eror getting active vote session", err)
-		return
-	}
+
+	h.SessionManager.Start(channelID, duration)
 	log.Println(hasActiveVoteSession)
-	time.AfterFunc(duration, func() {
-		h.stopVote(context.Background(), channelID)
-	})
 
 	fmt.Printf("Voting session started for channel %s, expires in %v seconds.\n", channelID, duration.Seconds())
 	w.WriteHeader(http.StatusOK)
-	SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "voteSession", Data: "started"}, ChannelID: channelID}
+
+	h.Broadcaster.Broadcast(channelID, "voteSession", "started")
+	// SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "voteSession", Data: "started"}, ChannelID: channelID}
 }
 
 func (h *Vote) StopHeroVote(w http.ResponseWriter, r *http.Request) {
@@ -156,17 +150,12 @@ func (h *Vote) StopHeroVote(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	h.stopVote(r.Context(), channelID)
+	h.StopHeroVoteInternal(r.Context(), channelID)
 }
 
-func (h *Vote) stopVote(ctx context.Context, channelID string) {
+func (h *Vote) StopHeroVoteInternal(ctx context.Context, channelID string) {
 	log.Println("Stopping Vote")
-	sessionKey := "voteHeroSession:" + channelID
-	err := h.Redis.Client.Del(ctx, sessionKey).Err()
-	if err != nil {
-		log.Printf("Failed to delete session key %s: %v\n", sessionKey, err)
-	}
-
+	h.SessionManager.Stop(channelID)
 	key := "votedHero:" + channelID
 	topVotes, err := h.Redis.GetMostVoted(ctx, key, 10)
 	if err != nil {
@@ -182,6 +171,8 @@ func (h *Vote) stopVote(ctx context.Context, channelID string) {
 		Message:   message,
 		ChannelID: channelID,
 	}
+	log.Println("Message: ", message)
+	log.Println(topVotes)
 	timeout := h.Redis.GetTwitchMessageAPITimeout(ctx, channelID)
 	if timeout < 0 {
 		err := h.TwitchWrapper.SendMessage(twitchMessage)
@@ -197,7 +188,7 @@ func (h *Vote) stopVote(ctx context.Context, channelID string) {
 		log.Printf("Failed to delete key %s: %v\n", key, err)
 	}
 
-	voteRelationKey := "voteRelation:" + VoteHeroBody.ChannelID + ":"
+	voteRelationKey := "voteRelation:" + channelID + ":"
 	err = h.Redis.ClearHeroVoteRelation(context.Background(), voteRelationKey)
 	if err != nil {
 		log.Println("Failed to clear hero vote relation", err)
@@ -211,8 +202,10 @@ func (h *Vote) stopVote(ctx context.Context, channelID string) {
 
 	h.Redis.UpdateLastVotedID(ctx, "lastVotedHeroMap:"+channelID, string(jsonData), 120*time.Second)
 
-	SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "votedHero", Data: string(jsonData)}, ChannelID: channelID}
-	SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "voteSession", Data: "stopped"}, ChannelID: channelID}
+	h.Broadcaster.Broadcast(channelID, "votedHero", string(jsonData))
+	h.Broadcaster.Broadcast(channelID, "voteSession", "stopped")
+	// SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "votedHero", Data: string(jsonData)}, ChannelID: channelID}
+	// SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "voteSession", Data: "stopped"}, ChannelID: channelID}
 }
 
 func (h *Vote) GetExtensionHeroVoteStatus(w http.ResponseWriter, r *http.Request) {
@@ -229,9 +222,8 @@ func (h *Vote) GetExtensionHeroVoteStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 	key := "votedHero:" + channelID
-	sessionKey := "voteHeroSession:" + channelID
-	// Check if key exists - if it does then there's an ongoing vote sessio
-	hasActiveVoteSession := h.hasActiveVoteSession(r.Context(), sessionKey)
+	// Check if key exists - if it does then there's an ongoing vote session
+	hasActiveVoteSession := h.SessionManager.HasActive(r.Context(), channelID)
 	topVotes, err := h.Redis.GetMostVoted(r.Context(), key, 10)
 	if err != nil {
 		log.Println("Failed to retrieve most voted heroes")
@@ -267,7 +259,6 @@ func (h *Vote) GetExtensionHeroVoteStatus(w http.ResponseWriter, r *http.Request
 	response.HasVoted = hasVoted
 	response.HasActiveVoteSession = hasActiveVoteSession
 	data, err := json.Marshal(response)
-	log.Println("ANDREW WTF", response, data)
 	if err != nil {
 		log.Println("failed to marshal:", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -275,12 +266,4 @@ func (h *Vote) GetExtensionHeroVoteStatus(w http.ResponseWriter, r *http.Request
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)
-}
-
-func (h *Vote) hasActiveVoteSession(ctx context.Context, key string) bool {
-	hasActiveVoteSession, err := h.Redis.KeyExists(ctx, key)
-	if err != nil {
-		return false
-	}
-	return hasActiveVoteSession
 }
