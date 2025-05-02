@@ -6,6 +6,8 @@ import (
 )
 
 type Vote struct {
-	Redis         *redisRepo.RedisRepo
-	TwitchWrapper *wrapper.TwitchWrapper
+	Redis          *redisRepo.RedisRepo
+	TwitchWrapper  *wrapper.TwitchWrapper
+	Broadcaster    Broadcaster
+	SessionManager *VoteSessionManager
 }

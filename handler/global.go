@@ -11,3 +11,10 @@ type SSEMessage struct {
 }
 
 var SSEPushChannel = make(chan SSEPushRequest, 100)
+
+type WSPushRequest struct {
+	ChannelID string
+	WSMessage WSMessage
+}
+
+var WSPushChannel = make(chan WSPushRequest, 100)

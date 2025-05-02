@@ -1,3 +1,4 @@
+// Removed from production for now
 package handler
 
 import (
@@ -39,7 +40,7 @@ func (h *Vote) VoteItem(w http.ResponseWriter, r *http.Request) {
 	if headerChannelID != "" {
 		VoteItemBody.ChannelID = headerChannelID
 	}
-	voteRelationKey := "itemRelation:" + VoteHeroBody.ChannelID + ":" + VoteHeroBody.TwitchID
+	voteRelationKey := "itemRelation:" + VoteItemBody.ChannelID + ":" + VoteItemBody.TwitchID
 	ttl := h.Redis.GetItemVoteRelationTTL(r.Context(), voteRelationKey)
 	if ttl <= 0 {
 		voteError := h.Redis.AddItemVoteRelation(r.Context(), voteRelationKey)
@@ -93,10 +94,13 @@ func (h *Vote) VoteItem(w http.ResponseWriter, r *http.Request) {
 		log.Println("Sending voteUpdate: ", voteThreshold)
 		log.Println("Sending votedItem: ", votedItem.ID)
 
-		SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "votedItem", Data: votedItem.ID}, ChannelID: VoteItemBody.ChannelID}
-		SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "voteUpdate", Data: 0}, ChannelID: VoteItemBody.ChannelID}
+		h.Broadcaster.Broadcast(VoteItemBody.ChannelID, "votedHero", votedItem.ID)
+		h.Broadcaster.Broadcast(VoteItemBody.ChannelID, "voteUpdate", 0)
+		// SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "votedItem", Data: votedItem.ID}, ChannelID: VoteItemBody.ChannelID}
+		// SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "voteUpdate", Data: 0}, ChannelID: VoteItemBody.ChannelID}
 	} else {
-		SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "voteUpdate", Data: voteCount}, ChannelID: VoteItemBody.ChannelID}
+		// SSEPushChannel <- SSEPushRequest{SSEMessage: SSEMessage{EventType: "voteUpdate", Data: voteCount}, ChannelID: VoteItemBody.ChannelID}
+		h.Broadcaster.Broadcast(VoteItemBody.ChannelID, "voteUpdate", voteCount)
 	}
 
 	w.WriteHeader(http.StatusCreated)

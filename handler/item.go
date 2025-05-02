@@ -9,8 +9,9 @@ import (
 )
 
 type ItemHandler struct {
-	DB    *repository.MongoDBRepo
-	Redis *redisRepo.RedisRepo
+	DB          *repository.MongoDBRepo
+	Redis       *redisRepo.RedisRepo
+	Broadcaster Broadcaster
 }
 
 func (h *ItemHandler) GetItems(w http.ResponseWriter, r *http.Request) {
