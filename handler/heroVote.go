@@ -46,19 +46,19 @@ func (h *Vote) VoteHero(w http.ResponseWriter, r *http.Request) {
 	}
 	// Handling vote relation
 	voteRelationKey := "voteRelation:" + body.ChannelID + ":" + body.TwitchID
-	// hasVoteRelation := h.Redis.GetHeroVoteRelation(r.Context(), voteRelationKey)
-	// if hasVoteRelation {
-	// 	log.Println("User already voted")
-	// 	w.WriteHeader(http.StatusBadRequest)
-	// 	// Define error message
-	// 	message := map[string]string{"error_message": "You have already voted"}
-	// 	// Convert message to JSON
-	// 	jsonResponse, _ := json.Marshal(message)
-	// 	// Set Content-Type and write response
-	// 	w.Header().Set("Content-Type", "application/json")
-	// 	w.Write(jsonResponse)
-	// 	return
-	// }
+	hasVoteRelation := h.Redis.GetHeroVoteRelation(r.Context(), voteRelationKey)
+	if hasVoteRelation {
+		log.Println("User already voted")
+		w.WriteHeader(http.StatusBadRequest)
+		// Define error message
+		message := map[string]string{"error_message": "You have already voted"}
+		// Convert message to JSON
+		jsonResponse, _ := json.Marshal(message)
+		// Set Content-Type and write response
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(jsonResponse)
+		return
+	}
 	voteError := h.Redis.AddHeroVoteRelation(r.Context(), voteRelationKey)
 	if voteError != nil {
 		log.Println(voteError)
