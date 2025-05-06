@@ -18,12 +18,41 @@ func (a *App) loadRoutes() {
 	corsOptions := a.getCorsOptions()
 	router.Use(cors.Handler(corsOptions))
 
-	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hi Rix!")
-	})
-
-	router.Get("/hi", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello world!")
+	router.Get("/privacy", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `<!DOCTYPE html>
+	<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Privacy Policy</title>
+	</head>
+	<body>
+		<h1>Privacy Policy</h1>
+		<p><strong>Last updated:</strong> May 7, 2025</p>
+		<p>Dota 2 Backseater respects your privacy. This extension transmits limited information necessary for functionality, specifically the <strong>Twitch opaque user ID</strong>, which is used to manage voting sessions within the extension.</p>
+		
+		<h2>Information Collected</h2>
+		<ul>
+			<li><strong>Opaque Twitch User ID:</strong> A non-personally identifiable identifier provided by Twitch. This is used solely to group votes and prevent abuse (e.g. multiple votes from the same user in one session).</li>
+		</ul>
+	
+		<p>No other personal data (such as name, email, IP address) is collected. We do not use cookies, analytics, or third-party tracking tools.</p>
+	
+		<h2>How Information is Used</h2>
+		<p>The opaque user ID is used only for vote counting and session management. It is not shared, sold, or used for profiling. All data remains internal to the service and is discarded after the voting session ends.</p>
+	
+		<h2>Data Retention</h2>
+		<p>Vote data is temporarily stored during an active session and discarded periodically. No long-term storage or account profiling is performed.</p>
+	
+		<h2>Third-Party Services</h2>
+		<p>This extension does not integrate with third-party services beyond Twitch. The extension runs on your device and communicates only with our backend server for voting purposes.</p>
+	
+		<h2>Children's Privacy</h2>
+		<p>This extension does not knowingly collect data from anyone under the age of 13. The use of the extension must comply with Twitch's Terms of Service.</p>
+	
+		<h2>Contact</h2>
+		<p>If you have questions about this privacy policy, please contact: <a href="dota2backseater@gmail.com">dota2backseater@gmail.com</a></p>
+	</body>
+	</html>`)
 	})
 
 	router.Route("/vote", a.loadItemVoteRoutes)
