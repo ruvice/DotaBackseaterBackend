@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
@@ -57,6 +58,31 @@ func (h *WSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	h.registerClient(client)
 	defer h.unregisterClient(client)
+
+	// Set up pong handler and initial read deadline
+	conn.SetReadLimit(512)
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
+	// Start ping ticker
+	go func() {
+		ticker := time.NewTicker(pingPeriod)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					log.Println("Ping failed, closing connection:", err)
+					conn.Close()
+					return
+				}
+			}
+		}
+	}()
 
 	// Goroutine for writing messages to the client
 	go func() {
