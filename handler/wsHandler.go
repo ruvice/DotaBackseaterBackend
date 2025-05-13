@@ -10,6 +10,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	pongWait   = 60 * time.Second
+	pingPeriod = 50 * time.Second
+)
+
 // Struct representing a message sent to a WebSocket client
 type WSMessage struct {
 	EventType string      `json:"event"`
@@ -48,7 +53,6 @@ func (h *WSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		log.Println("WebSocket upgrade failed:", err)
 		return
 	}
-	defer conn.Close()
 
 	client := &WSClient{
 		conn:      conn,
@@ -59,7 +63,20 @@ func (h *WSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	h.registerClient(client)
 	defer h.unregisterClient(client)
 
-	// Set up pong handler and initial read deadline
+	// Graceful shutdown helpers
+	done := make(chan struct{})
+	var once sync.Once
+	cleanup := func() {
+		once.Do(func() {
+			log.Println("Cleaning up connection")
+			close(done)            // stop ping loop
+			conn.Close()           // close conn
+			close(client.sendChan) // end writer
+		})
+	}
+	defer cleanup()
+
+	// Set read deadline and pong handler
 	conn.SetReadLimit(512)
 	conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
@@ -67,7 +84,7 @@ func (h *WSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
-	// Start ping ticker
+	// Start ping loop
 	go func() {
 		ticker := time.NewTicker(pingPeriod)
 		defer ticker.Stop()
@@ -76,32 +93,34 @@ func (h *WSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			select {
 			case <-ticker.C:
 				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-					log.Println("Ping failed, closing connection:", err)
-					conn.Close()
+					log.Println("Ping failed:", err)
+					cleanup()
 					return
 				}
+			case <-done:
+				return
 			}
 		}
 	}()
 
-	// Goroutine for writing messages to the client
+	// Start write loop
 	go func() {
 		for msg := range client.sendChan {
-			if err := client.conn.WriteJSON(msg); err != nil {
+			if err := conn.WriteJSON(msg); err != nil {
 				log.Println("WebSocket write error:", err)
-				break
+				cleanup()
+				return
 			}
 		}
 	}()
 
-	// Optional read loop — if you expect messages from client
+	// Read loop — blocks until connection closes or times out
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
 			log.Printf("Client disconnected from channel %s: %v", channelID, err)
 			break
 		}
-		// No-op for now
 	}
 }
 
